@@ -1,4 +1,4 @@
-# Copyright (C) 2021-2022 Luis López <luis@cuarentaydos.com>
+# Copyright (C) 2021-2026 Luis López <luis@cuarentaydos.com>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -16,28 +16,10 @@
 # USA.
 
 
-from datetime import timedelta
 from zoneinfo import ZoneInfo
 
-DOMAIN = "ideenergy"
-
+API_USER_SESSION_TIMEOUT = 15 * 60  # 15 minutes
 CONF_CONTRACT = "contract"
-
-LOCAL_TZ = ZoneInfo("Europe/Madrid")
-
-MEASURE_MAX_AGE = 60 * 50  # Fifty minutes
-MAX_RETRIES = 3
-MIN_SCAN_INTERVAL = 60
-UPDATE_WINDOW_START_MINUTE = 50
-UPDATE_WINDOW_END_MINUTE = 59
-API_USER_SESSION_TIMEOUT = 60
-
-
-DATA_ATTR_MEASURE_ACCUMULATED = "measure_accumulated"
-DATA_ATTR_MEASURE_INSTANT = "measure_instant"
-DATA_ATTR_HISTORICAL_CONSUMPTION = "historical_consumption"
-DATA_ATTR_HISTORICAL_GENERATION = "historical_generation"
-DATA_ATTR_HISTORICAL_POWER_DEMAND = "historical_power_demand"
-
-HISTORICAL_PERIOD_LENGHT = timedelta(days=7)
 CONFIG_ENTRY_VERSION = 3
+DOMAIN = "ideenergy"
+LOCAL_TZ = ZoneInfo("Europe/Madrid")

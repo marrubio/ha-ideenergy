@@ -1,4 +1,4 @@
-# Copyright (C) 2021-2022 Luis López <luis@cuarentaydos.com>
+# Copyright (C) 2021-2026 Luis López <luis@cuarentaydos.com>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -16,162 +16,145 @@
 # USA.
 
 
-import asyncio
 import logging
-import math
 from datetime import timedelta
 
 import ideenergy
-from homeassistant.config_entries import ConfigEntry
+from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.loader import async_get_loaded_integration
 
-from .barrier import TimeDeltaBarrier, TimeWindowBarrier  # NoopBarrier,
 from .const import (
     API_USER_SESSION_TIMEOUT,
     CONF_CONTRACT,
     DOMAIN,
-    MAX_RETRIES,
-    MEASURE_MAX_AGE,
-    MIN_SCAN_INTERVAL,
-    UPDATE_WINDOW_END_MINUTE,
-    UPDATE_WINDOW_START_MINUTE,
 )
-from .datacoordinator import DataSetType, IDeCoordinator
-from .updates import update_integration
+from .coordinator import IDeEnergyDataCoordinator
+from .data import IntegrationIDeEnergyConfigEntry, IntegrationIDeEnergyRunTimeData
+from .store import IDeEnergyConfigEntryState
 
 PLATFORMS: list[str] = ["sensor"]
 
-_LOGGER = logging.getLogger(__name__)
+LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    api = IDeEnergyAPI(hass, entry)
+def setup_domain_data(hass: HomeAssistant) -> None:
+    """Set up shared data for all config entries."""
+    if DOMAIN not in hass.data:
+        hass.data[DOMAIN] = {}
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: IntegrationIDeEnergyConfigEntry,
+) -> bool:
+    """Set up this integration using UI."""
+    setup_domain_data(hass)
+
+    ##
+    # Setup API
+    client = get_i_de_energy_api(hass, entry)
 
     try:
-        contract_details = await api.get_contract_details()
-    except ideenergy.client.ClientError as e:
-        _LOGGER.debug(f"Unable to initialize integration: {e}")
+        contract_details = await client.get_contract_details()
+    except ideenergy.ClientError as e:
+        LOGGER.debug(f"Unable to initialize integration: {e}")
         return False
 
-    device_info = IDeEnergyDeviceInfo(contract_details)
+    device_info = get_i_de_energy_device_info(contract_details)
 
-    coordinator = IDeCoordinator(
+    ##
+    # Setup config entry state
+    config_entry_state = IDeEnergyConfigEntryState(hass, entry)
+    await config_entry_state.async_load()
+
+    ##
+    # Setup coordinator
+    # https://developers.home-assistant.io/docs/integration_fetching_data
+    coordinator = IDeEnergyDataCoordinator(
         hass=hass,
-        api=api,
-        barriers={
-            DataSetType.MEASURE: TimeWindowBarrier(
-                allowed_window_minutes=(
-                    UPDATE_WINDOW_START_MINUTE,
-                    UPDATE_WINDOW_END_MINUTE,
-                ),
-                max_retries=MAX_RETRIES,
-                max_age=timedelta(seconds=MEASURE_MAX_AGE),
-            ),
-            DataSetType.HISTORICAL_CONSUMPTION: TimeDeltaBarrier(
-                delta=timedelta(hours=6)
-            ),
-            DataSetType.HISTORICAL_GENERATION: TimeDeltaBarrier(
-                delta=timedelta(hours=6)
-            ),
-            DataSetType.HISTORICAL_POWER_DEMAND: TimeDeltaBarrier(
-                delta=timedelta(hours=36)
-            ),
-        },
-        # Use default update_interval and relay on barriers for now
-        # MEASURE barrier should deny if last attempt (success or not) is too recent to
-        # prevent api smashing or subsequent baning
-        update_interval=_calculate_datacoordinator_update_interval(),
-        # update_interval=timedelta(seconds=30),
+        client=client,
+        config_entry_state=config_entry_state,
+        update_interval=timedelta(seconds=30),
     )
-
-    # Don't refresh coordinator yet since there isn't any sensor registered
-    # await coordinator.async_refresh()
-
+    await coordinator.async_config_entry_first_refresh()
     if not coordinator.last_update_success:
         raise ConfigEntryNotReady
 
-    hass.data[DOMAIN] = hass.data.get(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = (coordinator, device_info)
+    ##
+    # Setup integration runtime data
+    entry.runtime_data = IntegrationIDeEnergyRunTimeData(
+        coordinator=coordinator,
+        # config_entry_state=config_entry_state,
+        integration=async_get_loaded_integration(hass, entry.domain),
+        device_info=device_info,
+    )
 
-    for platform in PLATFORMS:
-        if entry.options.get(platform, True):
-            coordinator.platforms.append(platform)
-            hass.async_add_job(
-                hass.config_entries.async_forward_entry_setup(entry, platform)
-            )
-
+    ##
+    # Forward setups
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    coordinator, _ = hass.data[DOMAIN][entry.entry_id]
-    unloaded = all(
-        await asyncio.gather(
-            *[
-                hass.config_entries.async_forward_entry_unload(entry, platform)
-                for platform in PLATFORMS
-                if platform in coordinator.platforms
-            ]
-        )
+async def async_unload_entry(
+    hass: HomeAssistant,
+    entry: IntegrationIDeEnergyConfigEntry,
+) -> bool:
+    """Handle removal of an entry."""
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_reload_entry(
+    hass: HomeAssistant,
+    entry: IntegrationIDeEnergyConfigEntry,
+) -> None:
+    """Reload config entry."""
+    await hass.config_entries.async_reload(entry.entry_id)
+
+
+# async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry):
+#     raise NotImplementedError()
+#
+#     api = get_i_de_energy_api(hass, entry)
+#
+#     try:
+#         contract_details = await api.get_contract_details()
+#     except ideenergy.ClientError as e:
+#         LOGGER.debug(f"Unable to initialize integration: {e}")
+#         return False
+#
+#     # update_integration(hass, entry, get_i_de_energy_device_info(contract_details))
+#     return True
+
+import os
+
+
+def get_i_de_energy_api(hass: HomeAssistant, entry: ConfigEntry):
+
+    if bool(os.environ.get("HASS_I_DE_MOCK", "")):
+        ClientCls = ideenergy.MockClient
+    else:
+        ClientCls = ideenergy.Client
+
+    return ClientCls(
+        session=async_get_clientsession(hass),
+        username=entry.data[CONF_USERNAME],
+        password=entry.data[CONF_PASSWORD],
+        contract=entry.data[CONF_CONTRACT],
+        user_session_timeout=API_USER_SESSION_TIMEOUT,
     )
-    if unloaded:
-        hass.data[DOMAIN].pop(entry.entry_id)
-
-    return unloaded
 
 
-async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry)
-
-
-def _calculate_datacoordinator_update_interval() -> timedelta:
-    #
-    # Calculate SCAN_INTERVAL to allow two updates within the update window
-    #
-    update_window_width = (
-        UPDATE_WINDOW_END_MINUTE * 60 - UPDATE_WINDOW_START_MINUTE * 60
-    )
-    update_interval = math.floor(update_window_width / 2)
-    update_interval = max([MIN_SCAN_INTERVAL, update_interval])
-
-    return timedelta(seconds=update_interval)
-
-
-async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry):
-    api = IDeEnergyAPI(hass, entry)
-
-    try:
-        contract_details = await api.get_contract_details()
-    except ideenergy.client.ClientError as e:
-        _LOGGER.debug(f"Unable to initialize integration: {e}")
-        return False
-
-    update_integration(hass, entry, IDeEnergyDeviceInfo(contract_details))
-    return True
-
-
-def IDeEnergyDeviceInfo(contract_details):
+def get_i_de_energy_device_info(contract_details):
     return DeviceInfo(
         identifiers={
             ("cups", contract_details["cups"]),
         },
         name=contract_details["cups"],
         manufacturer=contract_details["listContador"][0]["tipMarca"],
-    )
-
-
-def IDeEnergyAPI(hass: HomeAssistant, entry: ConfigEntry):
-    return ideenergy.Client(
-        session=async_get_clientsession(hass),
-        username=entry.data[CONF_USERNAME],
-        password=entry.data[CONF_PASSWORD],
-        contract=entry.data[CONF_CONTRACT],
-        user_session_timeout=API_USER_SESSION_TIMEOUT,
     )

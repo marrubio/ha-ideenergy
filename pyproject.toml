@@ -1,9 +1,23 @@
-[build-system]
-requires = ["setuptools>=40.8.0", "wheel"]
-build-backend = "setuptools.build_meta"
+[project]
+name = "homeassistant-ideenergy"
+version = "2026.1.0"
+dependencies = [
+    "importlib-metadata; python_version >= '3.13.2'",
+]
+authors = [
+  {name = "Luis López", email = "luis@cuarentaydos.com"},
+]
+readme = "README.md"
+description ="Historical sensors for HomeAssistant"
+license-files = [ "LICENSE" ]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.13.2"
 
 [tool.black]
-target-version = ['py311']
+target-version = ['py313']
 
 [tool.isort]
 profile = "black"
@@ -12,4 +26,4 @@ profile = "black"
 files = ["custom_components/ideenergy"]
 
 [tool.pyupgrade]
-addopts = "--py311-plus"
+addopts = "--py313-plus"

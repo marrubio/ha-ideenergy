@@ -1,4 +1,4 @@
-# Copyright (C) 2021-2022 Luis López <luis@cuarentaydos.com>
+# Copyright (C) 2021-2026 Luis López <luis@cuarentaydos.com>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -16,92 +16,129 @@
 # USA.
 
 
-# TODO
+# TODO:
 # Maybe we need to mark some function as callback but I'm not sure whose.
-# from homeassistant.core import callback
 
-
-# Check sensor.SensorEntityDescription
-# https://github.com/home-assistant/core/blob/dev/homeassistant/components/sensor/__init__.py
 
 import itertools
-import logging
-from collections.abc import Callable
 from datetime import datetime
+from logging import getLogger
 from math import ceil
-from typing import Any
+from typing import cast
 
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    STATE_UNAVAILABLE,
-    STATE_UNKNOWN,
     UnitOfEnergy,
     UnitOfPower,
 )
 from homeassistant.core import HomeAssistant, callback, dt_util
+from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.restore_state import RestoreEntity
-from homeassistant.helpers.typing import DiscoveryInfoType
-from homeassistant_historical_sensor import HistoricalSensor, HistoricalState
-from homeassistant_historical_sensor import timemachine as tm
-
-from .const import DOMAIN
-from .datacoordinator import (
-    DATA_ATTR_HISTORICAL_CONSUMPTION,
-    DATA_ATTR_HISTORICAL_GENERATION,
-    DATA_ATTR_HISTORICAL_POWER_DEMAND,
-    DATA_ATTR_MEASURE_ACCUMULATED,
-    DATA_ATTR_MEASURE_INSTANT,
-    DataSetType,
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import slugify
+from homeassistant_historical_sensor import (  # PollUpdateMixin,
+    HistoricalSensor,
+    HistoricalState,
+    hass_get_last_statistic,
 )
-from .entity import IDeEntity
+
+# Check sensor.SensorEntityDescription
+# https://github.com/home-assistant/core/blob/dev/homeassistant/components/sensor/__init__.py
+from .coordinator import IDeEnergyCoordinatorDataSet, IDeEnergyDataCoordinator
+from .data import IntegrationIDeEnergyConfigEntry
 
 PLATFORM = "sensor"
 
-_LOGGER = logging.getLogger(__name__)
+LOGGER = getLogger(__name__)
 
 
-# The IDeSensor class provides:
-#     __init__
-#     __repr__
-#     name
-#     unique_id
-#     device_info
-#     entity_registry_enabled_default
-# The CoordinatorEntity class provides:
-#     should_poll
-#     async_update
-#     async_added_to_hass
-#     available
+class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
+    I_DE_PLATFORM: str = PLATFORM
+    I_DE_ENTITY_NAME: str
+    I_DE_DATA_SET: set
 
+    coordinator: IDeEnergyDataCoordinator
 
-class HistoricalSensorMixin(HistoricalSensor):
+    def __init__(
+        self,
+        *args,
+        hass: HomeAssistant,
+        device_info: DeviceInfo,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+
+        self._attr_has_entity_name = True
+        self._attr_name = self.I_DE_ENTITY_NAME
+
+        self._attr_unique_id = _build_entity_unique_id(
+            device_info, self.I_DE_ENTITY_NAME
+        )
+        self._attr_entity_id = _build_entity_entity_id(
+            self.I_DE_PLATFORM, device_info, self.I_DE_ENTITY_NAME
+        )
+        self._attr_device_info = device_info
+        self._attr_entity_registry_enabled_default = True
+        self._attr_entity_registry_visible_default = True
+
+        self._attr_state_attributes = {}
+
+    # def __repr__(self):
+    #     clsname = self.__class__.__name__
+    #
+    #     return f"<{clsname} {self.coordinator.client.username}/{self.coordinator.client._contract}>"
+
+    # ==
+    # Entity
+    # ==
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+
+        self.coordinator.datasets.update(self.I_DE_DATA_SET)
+        # await self.async_update_historical()
+        await self.coordinator.async_request_refresh()
+        # await self.async_write_historical()
+        LOGGER.info(f"{self.entity_id} updated historical")
+
+    async def async_will_remove_from_hass(self) -> None:
+        for x in self.I_DE_DATA_SET:
+            self.coordinator.datasets.remove(x)
+
+        await super().async_will_remove_from_hass()
+
     @callback
     def _handle_coordinator_update(self) -> None:
-        self.hass.add_job(self.async_write_ha_historical_states())
+        """Handle updated data from the coordinator."""
+        self.hass.async_create_task(self.async_write_historical())
 
-    def async_update_historical(self) -> None:
+    # It's a coordinator entity, do nothing
+    async def async_update_historical(self) -> None:
         pass
 
-
-class StatisticsMixin(HistoricalSensor):
+    # ==
+    # Historical sensor
+    # ==
     @property
-    def statistic_id(self):
-        return self.entity_id
+    def historical_states(self) -> list[HistoricalState]:
+        return cast(
+            list[HistoricalState],
+            self.coordinator.data[IDeEnergyCoordinatorDataSet.ACCUMULATED_CONSUMPTION],
+        )
 
     def get_statistic_metadata(self) -> StatisticMetaData:
-        meta = super().get_statistic_metadata() | {"has_sum": True}
+        meta = super().get_statistic_metadata()
+        meta["has_sum"] = True
 
         return meta
 
     async def async_calculate_statistic_data(
-        self, hist_states: list[HistoricalState], *, latest: dict | None
+        self, hist_states: list[HistoricalState], *, latest: dict | None = None
     ) -> list[StatisticData]:
         #
         # Filter out invalid states
@@ -110,8 +147,8 @@ class StatisticsMixin(HistoricalSensor):
         n_original_hist_states = len(hist_states)
         hist_states = [x for x in hist_states if x.state not in (0, None)]
         if len(hist_states) != n_original_hist_states:
-            _LOGGER.warning(
-                f"{self.statistic_id}: "
+            LOGGER.warning(
+                f"{self.entity_id}: "
                 + "found some weird values in historical statistics"
             )
 
@@ -122,7 +159,7 @@ class StatisticsMixin(HistoricalSensor):
         def hour_block_for_hist_state(hist_state: HistoricalState) -> datetime:
             secs_per_hour = 60 * 60
 
-            ts = ceil(hist_state.ts)
+            ts = ceil(hist_state.timestamp)
             block = ts // secs_per_hour
             leftover = ts % secs_per_hour
 
@@ -131,9 +168,7 @@ class StatisticsMixin(HistoricalSensor):
 
             return block * secs_per_hour
 
-        latest = await tm.hass_get_last_statistic(
-            self.hass, self.get_statistic_metadata()
-        )
+        latest = await hass_get_last_statistic(self.hass, self.get_statistic_metadata())
 
         #
         # Get last sum sum from latest
@@ -144,8 +179,8 @@ class StatisticsMixin(HistoricalSensor):
         try:
             total_accumulated = extract_last_sum(latest)
         except (KeyError, ValueError):
-            _LOGGER.error(
-                f"{self.statistic_id}: [bug] statistics broken (lastest={latest!r})"
+            LOGGER.error(
+                f"{self.entity_id}: [bug] statistics broken (lastest={latest!r})"
             )
             return []
 
@@ -153,9 +188,9 @@ class StatisticsMixin(HistoricalSensor):
             dt_util.utc_from_timestamp(latest.get("start", 0) if latest else 0)
         )
 
-        _LOGGER.debug(
-            f"{self.statistic_id}: "
-            + f"calculating statistics using {total_accumulated} as base accumulated "
+        LOGGER.debug(
+            f"{self.entity_id}: "
+            + f"calculating statistics using {total_accumulated:.2f} as base accumulated "
             + f"(registed at {start_point_local_dt})"
         )
 
@@ -186,10 +221,10 @@ class StatisticsMixin(HistoricalSensor):
         return ret
 
 
-class AccumulatedConsumption(RestoreEntity, IDeEntity, SensorEntity):
+class AccumulatedConsumption(IDeEnergySensor):
     I_DE_PLATFORM = PLATFORM
     I_DE_ENTITY_NAME = "Accumulated Consumption"
-    I_DE_DATA_SETS = [DataSetType.MEASURE]
+    I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.ACCUMULATED_CONSUMPTION}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -209,206 +244,123 @@ class AccumulatedConsumption(RestoreEntity, IDeEntity, SensorEntity):
         self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def state(self):
-        return self.coordinator.data[DATA_ATTR_MEASURE_ACCUMULATED]
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        self.async_write_ha_state()
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-
-        saved_data = await async_get_last_state_safe(self, float)
-        self.coordinator.update_internal_data(
-            {DATA_ATTR_MEASURE_ACCUMULATED: saved_data}
-        )
+    def historical_states(self) -> list[HistoricalState] | None:
+        return self.coordinator.data[
+            IDeEnergyCoordinatorDataSet.ACCUMULATED_CONSUMPTION
+        ]  # ty:ignore[non-subscriptable]
 
 
-class InstantPowerDemand(RestoreEntity, IDeEntity, SensorEntity):
+class AccumulatedGeneration(IDeEnergySensor):
     I_DE_PLATFORM = PLATFORM
-    I_DE_ENTITY_NAME = "Instant Power Demand"
-    I_DE_DATA_SETS = [DataSetType.MEASURE]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._attr_device_class = SensorDeviceClass.POWER
-        self._attr_state_class = SensorStateClass.MEASUREMENT
-        self._attr_native_unit_of_measurement = UnitOfPower.WATT
-
-    @property
-    def state(self):
-        return self.coordinator.data[DATA_ATTR_MEASURE_INSTANT]
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        self.async_write_ha_state()
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-
-        saved_data = await async_get_last_state_safe(self, float)
-        self.coordinator.update_internal_data({DATA_ATTR_MEASURE_INSTANT: saved_data})
-
-
-class HistoricalConsumption(
-    StatisticsMixin, HistoricalSensorMixin, IDeEntity, SensorEntity
-):
-    I_DE_PLATFORM = PLATFORM
-    I_DE_ENTITY_NAME = "Historical Consumption"
-    I_DE_DATA_SETS = [DataSetType.HISTORICAL_CONSUMPTION]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self._attr_device_class = SensorDeviceClass.ENERGY
-        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-        self._attr_entity_registry_enabled_default = False
-        self._attr_state = None
-
-        # The sensor's state is reset with every state update, for example a sensor
-        # updating every minute with the energy consumption during the past minute:
-        # state class total, last_reset updated every state change.
-        #
-        # (*) last_reset is set in states by historical_states_from_historical_api_data
-        # (*) set only in internal statistics model
-        #
-        # DON'T set for HistoricalSensors, you will mess your statistics.
-        # Keep as reference.
-        #
-        # self._attr_state_class = SensorStateClass.TOTAL
-
-    @property
-    def historical_states(self):
-        if (data := self.coordinator.data[DATA_ATTR_HISTORICAL_CONSUMPTION]) is None:
-            # FIXME: This should be None, fix ha-historical-sensor
-            return []
-
-        ret = [
-            HistoricalState(state=x.value, ts=x.end.timestamp()) for x in data.periods
-        ]
-
-        return ret
-
-
-class HistoricalGeneration(
-    StatisticsMixin, HistoricalSensorMixin, IDeEntity, SensorEntity
-):
-    I_DE_PLATFORM = PLATFORM
-    I_DE_ENTITY_NAME = "Historical Generation"
-    I_DE_DATA_SETS = [DataSetType.HISTORICAL_GENERATION]
+    I_DE_ENTITY_NAME = "Accumulated Generation"
+    I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.ACCUMULATED_GENERATION}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._attr_device_class = SensorDeviceClass.ENERGY
         self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-        self._attr_entity_registry_enabled_default = False
-        self._attr_state = None
 
-        # The sensor's state is reset with every state update, for example a sensor
-        # updating every minute with the energy consumption during the past minute:
-        # state class total, last_reset updated every state change.
+        # TOTAL vs TOTAL_INCREASING:
         #
-        # (*) last_reset is set in states by historical_states_from_historical_api_data
-        # (*) set only in internal statistics model
-        #
-        # DON'T set for HistoricalSensors, you will mess your statistics.
-        #
-        # Keep as reference.
-        #
-        # self._attr_state_class = SensorStateClass.TOTAL
+        # It's recommended to use state class total without last_reset whenever
+        # possible, state class total_increasing or total with last_reset should only be
+        # used when state class total without last_reset does not work for the sensor.
+        # https://developers.home-assistant.io/docs/core/entity/sensor/#how-to-choose-state_class-and-last_reset
+
+        # The sensor's value never resets, e.g. a lifetime total energy consumption or
+        # production: state_class total, last_reset not set or set to None
+
+        self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def historical_states(self):
-        if (data := self.coordinator.data[DATA_ATTR_HISTORICAL_GENERATION]) is None:
-            # FIXME: This should be None, fix ha-historical-sensor
-            return []
-
-        return [HistoricalState(state=state, ts=ts) for (ts, state) in data]
+    def historical_states(self) -> list[HistoricalState] | None:
+        return self.coordinator.data[
+            IDeEnergyCoordinatorDataSet.ACCUMULATED_GENERATION
+        ]  # ty:ignore[non-subscriptable]
 
 
-class HistoricalPowerDemand(HistoricalSensorMixin, IDeEntity, SensorEntity):
+class PowerDemandPeaks(IDeEnergySensor):
     I_DE_PLATFORM = PLATFORM
-    I_DE_ENTITY_NAME = "Historical Power Demand"
-    I_DE_DATA_SETS = [DataSetType.HISTORICAL_POWER_DEMAND]
+    I_DE_ENTITY_NAME = "Power Demand Peaks"
+    I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.POWER_DEMAND_PEAKS}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._attr_device_class = SensorDeviceClass.POWER
-        self._attr_native_unit_of_measurement = UnitOfPower.WATT
-        self._attr_entity_registry_enabled_default = False
-        self._attr_state = None
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+
+        # TOTAL vs TOTAL_INCREASING:
+        #
+        # It's recommended to use state class total without last_reset whenever
+        # possible, state class total_increasing or total with last_reset should only be
+        # used when state class total without last_reset does not work for the sensor.
+        # https://developers.home-assistant.io/docs/core/entity/sensor/#how-to-choose-state_class-and-last_reset
+
+        # The sensor's value never resets, e.g. a lifetime total energy consumption or
+        # production: state_class total, last_reset not set or set to None
+
+        self._attr_state_class = SensorStateClass.TOTAL
 
     @property
-    def historical_states(self):
-        if (data := self.coordinator.data[DATA_ATTR_HISTORICAL_POWER_DEMAND]) is None:
-            # FIXME: This should be None, fix ha-historical-sensor
-            return []
-
-        ret = [
-            HistoricalState(state=x.value / 1000, ts=x.dt.timestamp())
-            for x in data.demands
-        ]
-
-        return ret
+    def historical_states(self) -> list[HistoricalState] | None:
+        return self.coordinator.data[
+            IDeEnergyCoordinatorDataSet.POWER_DEMAND_PEAKS
+        ]  # ty:ignore[non-subscriptable]
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,
-    config_entry: ConfigEntry,
-    async_add_devices: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,  # noqa DiscoveryInfoType | None
-):
-    coordinator, device_info = hass.data[DOMAIN][config_entry.entry_id]
+    hass: HomeAssistant,  # noqa: ARG001 Unused function argument: `hass`
+    entry: IntegrationIDeEnergyConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    # entity_description = (
+    #     SensorEntityDescription(
+    #         key="ideenergy",
+    #         name="i-de energy",
+    #         icon="mdi:energy",
+    #     ),
+    # )
 
-    sensors = [
-        AccumulatedConsumption(
-            config_entry=config_entry, device_info=device_info, coordinator=coordinator
-        ),
-        InstantPowerDemand(
-            config_entry=config_entry, device_info=device_info, coordinator=coordinator
-        ),
-        HistoricalConsumption(
-            config_entry=config_entry, device_info=device_info, coordinator=coordinator
-        ),
-        HistoricalGeneration(
-            config_entry=config_entry, device_info=device_info, coordinator=coordinator
-        ),
-        HistoricalPowerDemand(
-            config_entry=config_entry, device_info=device_info, coordinator=coordinator
-        ),
-    ]
-    async_add_devices(sensors)
+    async_add_entities(
+        [
+            AccumulatedConsumption(
+                hass=hass,
+                coordinator=entry.runtime_data.coordinator,
+                # client=entry.runtime_data.client,
+                # state=entry.runtime_data.state,
+                device_info=entry.runtime_data.device_info,
+                # entity_description=entity_description,
+            ),
+            AccumulatedGeneration(
+                hass=hass,
+                coordinator=entry.runtime_data.coordinator,
+                # client=entry.runtime_data.client,
+                # state=entry.runtime_data.state,
+                device_info=entry.runtime_data.device_info,
+                # entity_description=entity_description,
+            ),
+            PowerDemandPeaks(
+                hass=hass,
+                coordinator=entry.runtime_data.coordinator,
+                # client=entry.runtime_data.client,
+                # state=entry.runtime_data.state,
+                device_info=entry.runtime_data.device_info,
+                # entity_description=entity_description,
+            ),
+        ]
+    )
 
 
-async def async_get_last_state_safe(
-    entity: RestoreEntity, convert_fn: Callable[[Any], Any]
-) -> Any:
-    # Try to load previous state using RestoreEntity
-    #
-    # self.async_get_last_state().last_update is tricky and can't be trusted in our
-    # scenario. last_updated can be the last time HA exited because state is saved
-    # at exit with last_updated=exit_time, not last_updated=sensor_last_update
-    #
-    # It's easier to just load the value and schedule an update with
-    # schedule_update_ha_state() (which is meant for push sensors but...)
+def _build_entity_unique_id(device_info: DeviceInfo, entity_unique_name: str) -> str:
+    cups = dict(device_info["identifiers"])["cups"]
+    return slugify(f"{cups}-{entity_unique_name}", separator="-")
 
-    state = await entity.async_get_last_state()
-    if state is None:
-        _LOGGER.debug(f"{entity.entity_id}: restore state failed (no state)")
-        return None
 
-    if state.state in [STATE_UNKNOWN, STATE_UNAVAILABLE]:
-        _LOGGER.debug(f"{entity.entity_id}: restore state failed ({state.state})")
-        return None
+def _build_entity_entity_id(
+    platform: str,
+    device_info: DeviceInfo,
+    entity_unique_name: str,
+) -> str:
+    partial_id = _build_entity_unique_id(device_info, entity_unique_name)
 
-    try:
-        return convert_fn(state.state)
-
-    except (TypeError, ValueError):
-        sttype = type(state.state)
-        _LOGGER.debug(
-            f"{entity.entity_id}: restore state failed "
-            + f"(incompatible. type='{sttype}', value='{state.state!r}')"
-        )
-        return None
+    return f"{platform}.{partial_id}".lower()

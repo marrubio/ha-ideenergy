@@ -3,9 +3,6 @@ default_config:
 logger:
   default: warning
   logs:
-    ideenergy: warning
-    custom_components.ideenergy.datacoordinator: debug
-    custom_components.ideenergy.sensor: debug
-    custom_components.ideenergy.updates: debug
-    custom_components.ideenergy.fixes: debug
+    ideenergy: debug
     homeassistant_historical_sensor: debug
+    custom_components.ideenergy: debug

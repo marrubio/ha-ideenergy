@@ -1,5 +1,4 @@
-#
-# Copyright (C) 2021 Luis López <luis@cuarentaydos.com>
+# Copyright (C) 2021-2026 Luis López <luis@cuarentaydos.com>
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -18,23 +17,28 @@
 
 
 import os
+from logging import getLogger
 from typing import Any
 
 import ideenergy
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.config_entries import ConfigFlowResult
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import callback  # noqa: F401
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers.aiohttp_client import async_create_clientsession
 
-from . import _LOGGER
 from .const import CONF_CONTRACT, CONFIG_ENTRY_VERSION, DOMAIN
+
+LOGGER = getLogger(__name__)
 
 AUTH_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_USERNAME, default=os.environ.get("HASS_I_DE_USERNAME")): str,
-        vol.Required(CONF_PASSWORD, default=os.environ.get("HASS_I_DE_PASSWORD")): str,
+        vol.Required(
+            CONF_USERNAME, default=os.environ.get("I_DE_ENERYGY_USERNAME")
+        ): str,
+        vol.Required(
+            CONF_PASSWORD, default=os.environ.get("I_DE_ENERYGY_PASSWORD")
+        ): str,
     }
 )
 
@@ -45,16 +49,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.info = {}
-        self.api = None
-
-    # @staticmethod
-    # @callback
-    # def async_get_options_flow(config_entry):
-    #     return OptionsFlowHandler(config_entry)
+        self.api: ideenergy.Client | None = None
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle a flow initialized by the user."""
         errors = {}
 
@@ -75,7 +74,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call
                 errors["base"] = "invalid_auth"
 
             except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception")
+                LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
             else:
@@ -95,7 +94,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call
 
     async def async_step_contract(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         contracts = await self.api.get_contracts()
         contracts = {f"{x['cups']} ({x['direccion']})": x for x in contracts}
 
