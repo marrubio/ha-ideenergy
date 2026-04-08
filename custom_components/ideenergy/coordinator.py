@@ -30,9 +30,7 @@ from homeassistant.core import HomeAssistant, dt_util
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant_historical_sensor import HistoricalState
 
-from .const import (
-    LOCAL_TZ,
-)
+from .const import LOCAL_TZ
 from .store import IDeEnergyConfigEntryState
 
 LOGGER = getLogger(__name__)
@@ -74,7 +72,7 @@ class IDeEnergyCoordinatorDataSet(enum.Enum):
 
 ##
 # IDeEnergyDataCoordinatorData: data stored inside the coordinator
-type IDeEnergyDataCoordinatorData = dict[
+IDeEnergyDataCoordinatorData = dict[
     IDeEnergyCoordinatorDataSet, list[HistoricalState] | None
 ]
 
@@ -85,17 +83,34 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
         hass: HomeAssistant,
         client: ideenergy.Client,
         config_entry_state: IDeEnergyConfigEntryState,
-        datasets: set[IDeEnergyCoordinatorDataSet] | None = None,
+        # datasets: set[IDeEnergyCoordinatorDataSet] | None = None,
         update_interval: timedelta = timedelta(seconds=30),
     ):
         name = f"{client} coordinator" if client else "i-de coordinator"
-        self.datasets = datasets or set()
+        # self.datasets = datasets or set()
+
+        # Use dataset names as keys so all counter accesses are consistent.
+        self.dataset_counter = {ds.name: 0 for ds in IDeEnergyCoordinatorDataSet}
 
         super().__init__(hass, LOGGER, name=name, update_interval=update_interval)
         self.data = {k: None for k in IDeEnergyCoordinatorDataSet}
 
         self._client = client
         self._config_entry_state = config_entry_state
+
+    def activate_dataset(self, dataset: IDeEnergyCoordinatorDataSet) -> None:
+        self.dataset_counter[dataset.name] += 1
+        LOGGER.debug(
+            f"activate dataset {dataset.name}: count={self.dataset_counter[dataset.name]}"
+        )
+
+    def deactivate_dataset(self, dataset: IDeEnergyCoordinatorDataSet) -> None:
+        if self.dataset_counter[dataset.name] > 0:
+            self.dataset_counter[dataset.name] -= 1
+
+        LOGGER.debug(
+            f"deactivate dataset {dataset.name}: count={self.dataset_counter[dataset.name]}"
+        )
 
     async def _async_setup(self) -> None:
         """Set up the coordinator
@@ -126,7 +141,8 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
 
         # Raise UpdateFailed is something were wrong
 
-        dsstr = ", ".join([x.name for x in self.datasets])
+        active_datasets = [k for k, v in self.dataset_counter.items() if v > 0]
+        dsstr = ", ".join(active_datasets)
         LOGGER.debug(f"update datasets: {dsstr}")
 
         updated_data = {}
@@ -137,7 +153,7 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
             IDeEnergyCoordinatorDataSet.POWER_DEMAND_PEAKS: self._async_get_power_demand_peaks,
         }
         for ds, fn in fns.items():
-            if ds in self.datasets:
+            if self.dataset_counter[ds.name] > 0:
                 try:
                     updated_data[ds] = await fn()
                 except ideenergy.ClientError:
@@ -270,7 +286,7 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
 
         try:
             prev = float(self._config_entry_state.data[key])
-        except (TypeError, ValueError, KeyError):
+        except TypeError, ValueError, KeyError:
             prev = 0
 
         return now_ts - prev <= max_age

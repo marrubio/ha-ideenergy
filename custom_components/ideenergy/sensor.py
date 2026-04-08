@@ -33,10 +33,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import (
-    UnitOfEnergy,
-    UnitOfPower,
-)
+from homeassistant.const import UnitOfEnergy, UnitOfPower
 from homeassistant.core import HomeAssistant, callback, dt_util
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -98,9 +95,12 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
     # Entity
     # ==
     async def async_added_to_hass(self) -> None:
+        LOGGER.info(f"{self.entity_id} added to hass")
         await super().async_added_to_hass()
 
-        self.coordinator.datasets.update(self.I_DE_DATA_SET)
+        for x in self.I_DE_DATA_SET:
+            self.coordinator.activate_dataset(x)
+
         # await self.async_update_historical()
         await self.coordinator.async_request_refresh()
         # await self.async_write_historical()
@@ -108,7 +108,7 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
 
     async def async_will_remove_from_hass(self) -> None:
         for x in self.I_DE_DATA_SET:
-            self.coordinator.datasets.remove(x)
+            self.coordinator.deactivate_dataset(x)
 
         await super().async_will_remove_from_hass()
 
@@ -134,7 +134,6 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
     def get_statistic_metadata(self) -> StatisticMetaData:
         meta = super().get_statistic_metadata()
         meta["has_sum"] = True
-
         return meta
 
     async def async_calculate_statistic_data(
@@ -178,7 +177,7 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
 
         try:
             total_accumulated = extract_last_sum(latest)
-        except (KeyError, ValueError):
+        except KeyError, ValueError:
             LOGGER.error(
                 f"{self.entity_id}: [bug] statistics broken (lastest={latest!r})"
             )
@@ -226,28 +225,17 @@ class AccumulatedConsumption(IDeEnergySensor):
     I_DE_ENTITY_NAME = "Accumulated Consumption"
     I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.ACCUMULATED_CONSUMPTION}
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._attr_device_class = SensorDeviceClass.ENERGY
-        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-
-        # TOTAL vs TOTAL_INCREASING:
-        #
-        # It's recommended to use state class total without last_reset whenever
-        # possible, state class total_increasing or total with last_reset should only be
-        # used when state class total without last_reset does not work for the sensor.
-        # https://developers.home-assistant.io/docs/core/entity/sensor/#how-to-choose-state_class-and-last_reset
-
-        # The sensor's value never resets, e.g. a lifetime total energy consumption or
-        # production: state_class total, last_reset not set or set to None
-
-        self._attr_state_class = SensorStateClass.TOTAL
+    def get_statistic_metadata(self):
+        meta = super().get_statistic_metadata()
+        meta["unit_class"] = SensorDeviceClass.ENERGY
+        meta["unit_of_measurement"] = UnitOfEnergy.KILO_WATT_HOUR
+        return meta
 
     @property
     def historical_states(self) -> list[HistoricalState] | None:
         return self.coordinator.data[
             IDeEnergyCoordinatorDataSet.ACCUMULATED_CONSUMPTION
-        ]  # ty:ignore[non-subscriptable]
+        ]
 
 
 class AccumulatedGeneration(IDeEnergySensor):
@@ -255,22 +243,11 @@ class AccumulatedGeneration(IDeEnergySensor):
     I_DE_ENTITY_NAME = "Accumulated Generation"
     I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.ACCUMULATED_GENERATION}
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._attr_device_class = SensorDeviceClass.ENERGY
-        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-
-        # TOTAL vs TOTAL_INCREASING:
-        #
-        # It's recommended to use state class total without last_reset whenever
-        # possible, state class total_increasing or total with last_reset should only be
-        # used when state class total without last_reset does not work for the sensor.
-        # https://developers.home-assistant.io/docs/core/entity/sensor/#how-to-choose-state_class-and-last_reset
-
-        # The sensor's value never resets, e.g. a lifetime total energy consumption or
-        # production: state_class total, last_reset not set or set to None
-
-        self._attr_state_class = SensorStateClass.TOTAL
+    def get_statistic_metadata(self):
+        meta = super().get_statistic_metadata()
+        meta["unit_class"] = SensorDeviceClass.ENERGY
+        meta["unit_of_measurement"] = UnitOfEnergy.KILO_WATT_HOUR
+        return meta
 
     @property
     def historical_states(self) -> list[HistoricalState] | None:
@@ -284,22 +261,28 @@ class PowerDemandPeaks(IDeEnergySensor):
     I_DE_ENTITY_NAME = "Power Demand Peaks"
     I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.POWER_DEMAND_PEAKS}
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._attr_device_class = SensorDeviceClass.ENERGY
-        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    # def __init__(self, *args, **kwargs):
+    #     super().__init__(*args, **kwargs)
+    #     self._attr_device_class = SensorDeviceClass.ENERGY
+    #     self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+    #
+    #     # TOTAL vs TOTAL_INCREASING:
+    #     #
+    #     # It's recommended to use state class total without last_reset whenever
+    #     # possible, state class total_increasing or total with last_reset should only be
+    #     # used when state class total without last_reset does not work for the sensor.
+    #     # https://developers.home-assistant.io/docs/core/entity/sensor/#how-to-choose-state_class-and-last_reset
+    #
+    #     # The sensor's value never resets, e.g. a lifetime total energy consumption or
+    #     # production: state_class total, last_reset not set or set to None
+    #
+    #     self._attr_state_class = SensorStateClass.TOTAL
 
-        # TOTAL vs TOTAL_INCREASING:
-        #
-        # It's recommended to use state class total without last_reset whenever
-        # possible, state class total_increasing or total with last_reset should only be
-        # used when state class total without last_reset does not work for the sensor.
-        # https://developers.home-assistant.io/docs/core/entity/sensor/#how-to-choose-state_class-and-last_reset
-
-        # The sensor's value never resets, e.g. a lifetime total energy consumption or
-        # production: state_class total, last_reset not set or set to None
-
-        self._attr_state_class = SensorStateClass.TOTAL
+    def get_statistic_metadata(self):
+        meta = super().get_statistic_metadata()
+        meta["unit_class"] = SensorDeviceClass.POWER
+        meta["unit_of_measurement"] = UnitOfPower.KILO_WATT
+        return meta
 
     @property
     def historical_states(self) -> list[HistoricalState] | None:
@@ -309,7 +292,7 @@ class PowerDemandPeaks(IDeEnergySensor):
 
 
 async def async_setup_entry(
-    hass: HomeAssistant,  # noqa: ARG001 Unused function argument: `hass`
+    hass: HomeAssistant,
     entry: IntegrationIDeEnergyConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
@@ -321,32 +304,16 @@ async def async_setup_entry(
     #     ),
     # )
 
+    IDeClasses = [AccumulatedConsumption, AccumulatedGeneration, PowerDemandPeaks]
     async_add_entities(
         [
-            AccumulatedConsumption(
+            IDeClass(
                 hass=hass,
                 coordinator=entry.runtime_data.coordinator,
-                # client=entry.runtime_data.client,
-                # state=entry.runtime_data.state,
                 device_info=entry.runtime_data.device_info,
                 # entity_description=entity_description,
-            ),
-            AccumulatedGeneration(
-                hass=hass,
-                coordinator=entry.runtime_data.coordinator,
-                # client=entry.runtime_data.client,
-                # state=entry.runtime_data.state,
-                device_info=entry.runtime_data.device_info,
-                # entity_description=entity_description,
-            ),
-            PowerDemandPeaks(
-                hass=hass,
-                coordinator=entry.runtime_data.coordinator,
-                # client=entry.runtime_data.client,
-                # state=entry.runtime_data.state,
-                device_info=entry.runtime_data.device_info,
-                # entity_description=entity_description,
-            ),
+            )
+            for IDeClass in IDeClasses
         ]
     )
 
