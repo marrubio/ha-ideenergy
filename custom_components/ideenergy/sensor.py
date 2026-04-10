@@ -22,6 +22,7 @@
 
 import itertools
 from datetime import datetime
+from functools import cached_property
 from logging import getLogger
 from math import ceil
 from typing import cast
@@ -31,22 +32,19 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
     SensorEntityDescription,
-    SensorStateClass,
 )
-from homeassistant.const import UnitOfEnergy, UnitOfPower
+from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback, dt_util
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
-from homeassistant_historical_sensor import (  # PollUpdateMixin,
+from homeassistant_historical_sensor import (
     HistoricalSensor,
     HistoricalState,
     hass_get_last_statistic,
 )
 
-# Check sensor.SensorEntityDescription
-# https://github.com/home-assistant/core/blob/dev/homeassistant/components/sensor/__init__.py
 from .coordinator import IDeEnergyCoordinatorDataSet, IDeEnergyDataCoordinator
 from .data import IntegrationIDeEnergyConfigEntry
 
@@ -73,23 +71,19 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
 
         self._attr_has_entity_name = True
         self._attr_name = self.I_DE_ENTITY_NAME
+        self._attr_device_info = device_info
 
         self._attr_unique_id = _build_entity_unique_id(
             device_info, self.I_DE_ENTITY_NAME
         )
-        self._attr_entity_id = _build_entity_entity_id(
-            self.I_DE_PLATFORM, device_info, self.I_DE_ENTITY_NAME
-        )
-        self._attr_device_info = device_info
-        self._attr_entity_registry_enabled_default = True
-        self._attr_entity_registry_visible_default = True
 
         self._attr_state_attributes = {}
 
-    # def __repr__(self):
-    #     clsname = self.__class__.__name__
-    #
-    #     return f"<{clsname} {self.coordinator.client.username}/{self.coordinator.client._contract}>"
+    @cached_property
+    def unique_id(self) -> str:
+        cups = dict(self.device_info["identifiers"])["cups"]
+        name = self.I_DE_ENTITY_NAME
+        return slugify(f"{cups}-{name}", separator="-")
 
     # ==
     # Entity
@@ -133,6 +127,12 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
 
     def get_statistic_metadata(self) -> StatisticMetaData:
         meta = super().get_statistic_metadata()
+        device_name = self.device_info.get("name") if self.device_info else None
+        meta["name"] = (
+            f"{device_name} {self.I_DE_ENTITY_NAME}"
+            if device_name
+            else self.I_DE_ENTITY_NAME
+        )
         meta["has_sum"] = True
         return meta
 
@@ -323,13 +323,3 @@ async def async_setup_entry(
 def _build_entity_unique_id(device_info: DeviceInfo, entity_unique_name: str) -> str:
     cups = dict(device_info["identifiers"])["cups"]
     return slugify(f"{cups}-{entity_unique_name}", separator="-")
-
-
-def _build_entity_entity_id(
-    platform: str,
-    device_info: DeviceInfo,
-    entity_unique_name: str,
-) -> str:
-    partial_id = _build_entity_unique_id(device_info, entity_unique_name)
-
-    return f"{platform}.{partial_id}".lower()

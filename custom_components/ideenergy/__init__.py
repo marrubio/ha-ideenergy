@@ -17,6 +17,7 @@
 
 
 import logging
+import os
 from datetime import timedelta
 
 import ideenergy
@@ -27,11 +28,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.loader import async_get_loaded_integration
 
-from .const import (
-    API_USER_SESSION_TIMEOUT,
-    CONF_CONTRACT,
-    DOMAIN,
-)
+from .const import CONF_CONTRACT, DOMAIN
 from .coordinator import IDeEnergyDataCoordinator
 from .data import IntegrationIDeEnergyConfigEntry, IntegrationIDeEnergyRunTimeData
 from .store import IDeEnergyConfigEntryState
@@ -131,8 +128,6 @@ async def async_reload_entry(
 #     # update_integration(hass, entry, get_i_de_energy_device_info(contract_details))
 #     return True
 
-import os
-
 
 def get_i_de_energy_api(hass: HomeAssistant, entry: ConfigEntry):
 
@@ -146,7 +141,6 @@ def get_i_de_energy_api(hass: HomeAssistant, entry: ConfigEntry):
         username=entry.data[CONF_USERNAME],
         password=entry.data[CONF_PASSWORD],
         contract=entry.data[CONF_CONTRACT],
-        user_session_timeout=API_USER_SESSION_TIMEOUT,
     )
 
 

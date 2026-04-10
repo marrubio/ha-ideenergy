@@ -18,8 +18,9 @@
 
 from zoneinfo import ZoneInfo
 
-API_USER_SESSION_TIMEOUT = 15 * 60  # 15 minutes
 CONF_CONTRACT = "contract"
-CONFIG_ENTRY_VERSION = 3
+CONFIG_ENTRY_VERSION = (
+    3  # Change to 4 after v3 release, No migration provided, intentional
+)
 DOMAIN = "ideenergy"
 LOCAL_TZ = ZoneInfo("Europe/Madrid")

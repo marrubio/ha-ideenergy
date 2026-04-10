@@ -25,8 +25,6 @@ from typing import TypeAlias
 
 import ideenergy
 from homeassistant.core import HomeAssistant, dt_util
-
-# from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant_historical_sensor import HistoricalState
 
@@ -83,11 +81,9 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
         hass: HomeAssistant,
         client: ideenergy.Client,
         config_entry_state: IDeEnergyConfigEntryState,
-        # datasets: set[IDeEnergyCoordinatorDataSet] | None = None,
         update_interval: timedelta = timedelta(seconds=30),
     ):
         name = f"{client} coordinator" if client else "i-de coordinator"
-        # self.datasets = datasets or set()
 
         # Use dataset names as keys so all counter accesses are consistent.
         self.dataset_counter = {ds.name: 0 for ds in IDeEnergyCoordinatorDataSet}
