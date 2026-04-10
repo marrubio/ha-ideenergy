@@ -222,7 +222,7 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
 
 class HistoricalConsumption(IDeEnergySensor):
     I_DE_PLATFORM = PLATFORM
-    I_DE_ENTITY_NAME = "Accumulated Consumption"
+    I_DE_ENTITY_NAME = "Historical Consumption"
     I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.HISTORICAL_CONSUMPTION}
 
     def get_statistic_metadata(self):
@@ -254,39 +254,43 @@ class HistoricalGeneration(IDeEnergySensor):
         ]  # ty:ignore[non-subscriptable]
 
 
-class PowerDemandPeaks(IDeEnergySensor):
-    I_DE_PLATFORM = PLATFORM
-    I_DE_ENTITY_NAME = "Power Demand Peaks"
-    I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.POWER_DEMAND_PEAKS}
+##
+# Migrate this to attributes in a general sensor
+# Using statistics for the isolated points representing demand peaks has no sense
 
-    # def __init__(self, *args, **kwargs):
-    #     super().__init__(*args, **kwargs)
-    #     self._attr_device_class = SensorDeviceClass.ENERGY
-    #     self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-    #
-    #     # TOTAL vs TOTAL_INCREASING:
-    #     #
-    #     # It's recommended to use state class total without last_reset whenever
-    #     # possible, state class total_increasing or total with last_reset should only be
-    #     # used when state class total without last_reset does not work for the sensor.
-    #     # https://developers.home-assistant.io/docs/core/entity/sensor/#how-to-choose-state_class-and-last_reset
-    #
-    #     # The sensor's value never resets, e.g. a lifetime total energy consumption or
-    #     # production: state_class total, last_reset not set or set to None
-    #
-    #     self._attr_state_class = SensorStateClass.TOTAL
+# class PowerDemandPeaks(IDeEnergySensor):
+#     I_DE_PLATFORM = PLATFORM
+#     I_DE_ENTITY_NAME = "Power Demand Peaks"
+#     I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.POWER_DEMAND_PEAKS}
 
-    def get_statistic_metadata(self):
-        meta = super().get_statistic_metadata()
-        meta["unit_class"] = SensorDeviceClass.POWER
-        meta["unit_of_measurement"] = UnitOfPower.KILO_WATT
-        return meta
+#     # def __init__(self, *args, **kwargs):
+#     #     super().__init__(*args, **kwargs)
+#     #     self._attr_device_class = SensorDeviceClass.ENERGY
+#     #     self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+#     #
+#     #     # TOTAL vs TOTAL_INCREASING:
+#     #     #
+#     #     # It's recommended to use state class total without last_reset whenever
+#     #     # possible, state class total_increasing or total with last_reset should only be
+#     #     # used when state class total without last_reset does not work for the sensor.
+#     #     # https://developers.home-assistant.io/docs/core/entity/sensor/#how-to-choose-state_class-and-last_reset
+#     #
+#     #     # The sensor's value never resets, e.g. a lifetime total energy consumption or
+#     #     # production: state_class total, last_reset not set or set to None
+#     #
+#     #     self._attr_state_class = SensorStateClass.TOTAL
 
-    @property
-    def historical_states(self) -> list[HistoricalState] | None:
-        return self.coordinator.data[
-            IDeEnergyCoordinatorDataSet.POWER_DEMAND_PEAKS
-        ]  # ty:ignore[non-subscriptable]
+#     def get_statistic_metadata(self):
+#         meta = super().get_statistic_metadata()
+#         meta["unit_class"] = SensorDeviceClass.POWER
+#         meta["unit_of_measurement"] = UnitOfPower.KILO_WATT
+#         return meta
+
+#     @property
+#     def historical_states(self) -> list[HistoricalState] | None:
+#         return self.coordinator.data[
+#             IDeEnergyCoordinatorDataSet.POWER_DEMAND_PEAKS
+#         ]  # ty:ignore[non-subscriptable]
 
 
 async def async_setup_entry(
@@ -302,7 +306,7 @@ async def async_setup_entry(
     #     ),
     # )
 
-    IDeClasses = [HistoricalConsumption, HistoricalGeneration, PowerDemandPeaks]
+    IDeClasses = [HistoricalConsumption, HistoricalGeneration]
     async_add_entities(
         [
             IDeClass(

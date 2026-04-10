@@ -51,9 +51,9 @@ HISTORICAL_GENERATION_LAST_ATTEMPT_STORED_STATE_KEY = (
 
 
 HISTORICAL_CONSUMPTION_LAST_SUCCESS_MAX_AGE = 2 * 60 * 60
-HISTORICAL_CONSUMPTION_LAST_ATTEMPT_MAX_AGE = 5 * 60
+HISTORICAL_CONSUMPTION_LAST_ATTEMPT_MAX_AGE = 5 * 60  # 5 minutes
 HISTORICAL_GENERATION_LAST_SUCCESS_MAX_AGE = 2 * 60 * 60
-HISTORICAL_GENERATION_LAST_ATTEMPT_MAX_AGE = 5 * 60
+HISTORICAL_GENERATION_LAST_ATTEMPT_MAX_AGE = 5 * 60  # 5 minutes
 
 MEASURE_ACCUMULATED_KEY = "measure_accumulated"
 MEASURE_INSTANT_KEY = "measure_instant"
@@ -72,7 +72,7 @@ class IDeEnergyCoordinatorDataSet(enum.Enum):
 
 ##
 # IDeEnergyDataCoordinatorData: data stored inside the coordinator
-IDeEnergyDataCoordinatorData = dict[
+type IDeEnergyDataCoordinatorData = dict[
     IDeEnergyCoordinatorDataSet, list[HistoricalState] | None
 ]
 
