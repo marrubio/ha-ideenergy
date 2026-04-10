@@ -36,24 +36,24 @@ from .store import IDeEnergyConfigEntryState
 LOGGER = getLogger(__name__)
 
 
-ACCUMULATED_CONSUMPTION_LAST_SUCCESS_STORED_STATE_KEY = (
-    "accumulated_consumption_last_success"
+HISTORICAL_CONSUMPTION_LAST_SUCCESS_STORED_STATE_KEY = (
+    "historical_consumption_last_success"
 )
-ACCUMULATED_CONSUMPTION_LAST_ATTEMPT_STORED_STATE_KEY = (
-    "accumulated_consumption_last_attempt"
+HISTORICAL_CONSUMPTION_LAST_ATTEMPT_STORED_STATE_KEY = (
+    "historical_consumption_last_attempt"
 )
-ACCUMULATED_GENERATION_LAST_SUCCESS_STORED_STATE_KEY = (
-    "accumulated_generation_last_success"
+HISTORICAL_GENERATION_LAST_SUCCESS_STORED_STATE_KEY = (
+    "historical_generation_last_success"
 )
-ACCUMULATED_GENERATION_LAST_ATTEMPT_STORED_STATE_KEY = (
-    "accumulated_generation_last_attempt"
+HISTORICAL_GENERATION_LAST_ATTEMPT_STORED_STATE_KEY = (
+    "historical_generation_last_attempt"
 )
 
 
-ACCUMULATED_CONSUMPTION_LAST_SUCCESS_MAX_AGE = 2 * 60 * 60
-ACCUMULATED_CONSUMPTION_LAST_ATTEMPT_MAX_AGE = 5 * 60
-ACCUMULATED_GENERATION_LAST_SUCCESS_MAX_AGE = 2 * 60 * 60
-ACCUMULATED_GENERATION_LAST_ATTEMPT_MAX_AGE = 5 * 60
+HISTORICAL_CONSUMPTION_LAST_SUCCESS_MAX_AGE = 2 * 60 * 60
+HISTORICAL_CONSUMPTION_LAST_ATTEMPT_MAX_AGE = 5 * 60
+HISTORICAL_GENERATION_LAST_SUCCESS_MAX_AGE = 2 * 60 * 60
+HISTORICAL_GENERATION_LAST_ATTEMPT_MAX_AGE = 5 * 60
 
 MEASURE_ACCUMULATED_KEY = "measure_accumulated"
 MEASURE_INSTANT_KEY = "measure_instant"
@@ -65,8 +65,8 @@ HISTORICAL_PERIOD_LENGHT = timedelta(days=7)
 # IDeEnergyCoordinatorDataSet: types of data that can be registered in the
 # coordinator to be fetched
 class IDeEnergyCoordinatorDataSet(enum.Enum):
-    ACCUMULATED_CONSUMPTION = enum.auto()
-    ACCUMULATED_GENERATION = enum.auto()
+    HISTORICAL_CONSUMPTION = enum.auto()
+    HISTORICAL_GENERATION = enum.auto()
     POWER_DEMAND_PEAKS = enum.auto()
 
 
@@ -148,8 +148,8 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
         updated_data = {}
 
         fns = {
-            IDeEnergyCoordinatorDataSet.ACCUMULATED_CONSUMPTION: self._async_get_accumulated_consumption,
-            IDeEnergyCoordinatorDataSet.ACCUMULATED_GENERATION: self._async_get_accumulated_generation,
+            IDeEnergyCoordinatorDataSet.HISTORICAL_CONSUMPTION: self._async_get_historical_consumption,
+            IDeEnergyCoordinatorDataSet.HISTORICAL_GENERATION: self._async_get_historical_generation,
             IDeEnergyCoordinatorDataSet.POWER_DEMAND_PEAKS: self._async_get_power_demand_peaks,
         }
         for ds, fn in fns.items():
@@ -173,24 +173,24 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
             MEASURE_INSTANT_KEY: data.instant,
         }
 
-    async def _async_get_accumulated_consumption(self) -> list[HistoricalState] | None:
-        return await self._async_get_accumulated_generic(
+    async def _async_get_historical_consumption(self) -> list[HistoricalState] | None:
+        return await self._async_get_historical_generic(
             self._client.get_historical_consumption,
-            dataset=IDeEnergyCoordinatorDataSet.ACCUMULATED_CONSUMPTION,
-            last_success_state_key=ACCUMULATED_CONSUMPTION_LAST_SUCCESS_STORED_STATE_KEY,
-            last_attempt_state_key=ACCUMULATED_CONSUMPTION_LAST_ATTEMPT_STORED_STATE_KEY,
-            last_attempt_max_age=ACCUMULATED_CONSUMPTION_LAST_ATTEMPT_MAX_AGE,
-            last_success_max_age=ACCUMULATED_CONSUMPTION_LAST_SUCCESS_MAX_AGE,
+            dataset=IDeEnergyCoordinatorDataSet.HISTORICAL_CONSUMPTION,
+            last_success_state_key=HISTORICAL_CONSUMPTION_LAST_SUCCESS_STORED_STATE_KEY,
+            last_attempt_state_key=HISTORICAL_CONSUMPTION_LAST_ATTEMPT_STORED_STATE_KEY,
+            last_attempt_max_age=HISTORICAL_CONSUMPTION_LAST_ATTEMPT_MAX_AGE,
+            last_success_max_age=HISTORICAL_CONSUMPTION_LAST_SUCCESS_MAX_AGE,
         )
 
-    async def _async_get_accumulated_generation(self) -> list[HistoricalState] | None:
-        return await self._async_get_accumulated_generic(
+    async def _async_get_historical_generation(self) -> list[HistoricalState] | None:
+        return await self._async_get_historical_generic(
             self._client.get_historical_generation,
-            dataset=IDeEnergyCoordinatorDataSet.ACCUMULATED_GENERATION,
-            last_success_state_key=ACCUMULATED_GENERATION_LAST_SUCCESS_STORED_STATE_KEY,
-            last_success_max_age=ACCUMULATED_GENERATION_LAST_SUCCESS_MAX_AGE,
-            last_attempt_state_key=ACCUMULATED_GENERATION_LAST_ATTEMPT_STORED_STATE_KEY,
-            last_attempt_max_age=ACCUMULATED_GENERATION_LAST_ATTEMPT_MAX_AGE,
+            dataset=IDeEnergyCoordinatorDataSet.HISTORICAL_GENERATION,
+            last_success_state_key=HISTORICAL_GENERATION_LAST_SUCCESS_STORED_STATE_KEY,
+            last_success_max_age=HISTORICAL_GENERATION_LAST_SUCCESS_MAX_AGE,
+            last_attempt_state_key=HISTORICAL_GENERATION_LAST_ATTEMPT_STORED_STATE_KEY,
+            last_attempt_max_age=HISTORICAL_GENERATION_LAST_ATTEMPT_MAX_AGE,
         )
 
     async def _async_get_power_demand_peaks(self) -> list[HistoricalState] | None:
@@ -218,7 +218,7 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
 
         return hist_states
 
-    async def _async_get_accumulated_generic(
+    async def _async_get_historical_generic(
         self,
         afn: Callable,
         *,

@@ -128,7 +128,7 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
     def historical_states(self) -> list[HistoricalState]:
         return cast(
             list[HistoricalState],
-            self.coordinator.data[IDeEnergyCoordinatorDataSet.ACCUMULATED_CONSUMPTION],
+            self.coordinator.data[IDeEnergyCoordinatorDataSet.HISTORICAL_CONSUMPTION],
         )
 
     def get_statistic_metadata(self) -> StatisticMetaData:
@@ -220,10 +220,10 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
         return ret
 
 
-class AccumulatedConsumption(IDeEnergySensor):
+class HistoricalConsumption(IDeEnergySensor):
     I_DE_PLATFORM = PLATFORM
     I_DE_ENTITY_NAME = "Accumulated Consumption"
-    I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.ACCUMULATED_CONSUMPTION}
+    I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.HISTORICAL_CONSUMPTION}
 
     def get_statistic_metadata(self):
         meta = super().get_statistic_metadata()
@@ -233,15 +233,13 @@ class AccumulatedConsumption(IDeEnergySensor):
 
     @property
     def historical_states(self) -> list[HistoricalState] | None:
-        return self.coordinator.data[
-            IDeEnergyCoordinatorDataSet.ACCUMULATED_CONSUMPTION
-        ]
+        return self.coordinator.data[IDeEnergyCoordinatorDataSet.HISTORICAL_CONSUMPTION]
 
 
-class AccumulatedGeneration(IDeEnergySensor):
+class HistoricalGeneration(IDeEnergySensor):
     I_DE_PLATFORM = PLATFORM
     I_DE_ENTITY_NAME = "Accumulated Generation"
-    I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.ACCUMULATED_GENERATION}
+    I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.HISTORICAL_GENERATION}
 
     def get_statistic_metadata(self):
         meta = super().get_statistic_metadata()
@@ -252,7 +250,7 @@ class AccumulatedGeneration(IDeEnergySensor):
     @property
     def historical_states(self) -> list[HistoricalState] | None:
         return self.coordinator.data[
-            IDeEnergyCoordinatorDataSet.ACCUMULATED_GENERATION
+            IDeEnergyCoordinatorDataSet.HISTORICAL_GENERATION
         ]  # ty:ignore[non-subscriptable]
 
 
@@ -304,7 +302,7 @@ async def async_setup_entry(
     #     ),
     # )
 
-    IDeClasses = [AccumulatedConsumption, AccumulatedGeneration, PowerDemandPeaks]
+    IDeClasses = [HistoricalConsumption, HistoricalGeneration, PowerDemandPeaks]
     async_add_entities(
         [
             IDeClass(
