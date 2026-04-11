@@ -108,10 +108,12 @@ Temporary Items
 .apdisk
 
 ### homeassistant integration ###
-config/
+config/*
 !config/configuration.yaml
-!config/custom_components
-Pipfile.lock
+# !config/custom_components/
+# !config/custom_components/**
 *.swp
 *.sublime-*
-*.env
+*.code-workspace
+.env
+.venb
