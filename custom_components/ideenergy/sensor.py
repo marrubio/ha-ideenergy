@@ -21,7 +21,7 @@
 
 
 import itertools
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import cached_property
 from logging import getLogger
 from math import ceil
@@ -57,7 +57,6 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
     I_DE_PLATFORM: str = PLATFORM
     I_DE_ENTITY_NAME: str
     I_DE_DATA_SET: set
-
     coordinator: IDeEnergyDataCoordinator
 
     def __init__(
@@ -249,9 +248,7 @@ class HistoricalGeneration(IDeEnergySensor):
 
     @property
     def historical_states(self) -> list[HistoricalState] | None:
-        return self.coordinator.data[
-            IDeEnergyCoordinatorDataSet.HISTORICAL_GENERATION
-        ]  # ty:ignore[non-subscriptable]
+        return self.coordinator.data[IDeEnergyCoordinatorDataSet.HISTORICAL_GENERATION]
 
 
 ##

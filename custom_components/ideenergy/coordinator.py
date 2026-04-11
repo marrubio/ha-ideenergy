@@ -18,17 +18,16 @@
 from __future__ import annotations
 
 import enum
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from logging import getLogger
-from typing import TypeAlias
 
 import ideenergy
 from homeassistant.core import HomeAssistant, dt_util
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant_historical_sensor import HistoricalState
 
-from .const import LOCAL_TZ
+from .const import LOCAL_TZ, UPDATE_INTERVAL
 from .store import IDeEnergyConfigEntryState
 
 LOGGER = getLogger(__name__)
@@ -81,14 +80,13 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
         hass: HomeAssistant,
         client: ideenergy.Client,
         config_entry_state: IDeEnergyConfigEntryState,
-        update_interval: timedelta = timedelta(seconds=30),
+        update_interval: timedelta = UPDATE_INTERVAL,
     ):
         name = f"{client} coordinator" if client else "i-de coordinator"
+        super().__init__(hass, LOGGER, name=name, update_interval=update_interval)
 
         # Use dataset names as keys so all counter accesses are consistent.
         self.dataset_counter = {ds.name: 0 for ds in IDeEnergyCoordinatorDataSet}
-
-        super().__init__(hass, LOGGER, name=name, update_interval=update_interval)
         self.data = {k: None for k in IDeEnergyCoordinatorDataSet}
 
         self._client = client
@@ -96,8 +94,13 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
 
     def activate_dataset(self, dataset: IDeEnergyCoordinatorDataSet) -> None:
         self.dataset_counter[dataset.name] += 1
+        if self.dataset_counter[dataset.name] == 1:
+            LOGGER.debug(f"dataset {dataset.name} enabled")
+            # Fix a better place for this call, it's sub-optimal
+            self.hass.async_create_task(self.async_request_refresh())
+
         LOGGER.debug(
-            f"activate dataset {dataset.name}: count={self.dataset_counter[dataset.name]}"
+            f"dataset {dataset.name} ref_count incremented (count={self.dataset_counter[dataset.name]})"
         )
 
     def deactivate_dataset(self, dataset: IDeEnergyCoordinatorDataSet) -> None:
@@ -105,8 +108,10 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
             self.dataset_counter[dataset.name] -= 1
 
         LOGGER.debug(
-            f"deactivate dataset {dataset.name}: count={self.dataset_counter[dataset.name]}"
+            f"dataset {dataset.name} ref_count decremented (count={self.dataset_counter[dataset.name]})"
         )
+        if self.dataset_counter[dataset.name] == 0:
+            LOGGER.debug(f"dataset {dataset.name} disabled")
 
     async def _async_setup(self) -> None:
         """Set up the coordinator
@@ -139,7 +144,7 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
 
         active_datasets = [k for k, v in self.dataset_counter.items() if v > 0]
         dsstr = ", ".join(active_datasets)
-        LOGGER.debug(f"update datasets: {dsstr}")
+        LOGGER.debug(f"datasets enabled: {dsstr}")
 
         updated_data = {}
 
@@ -155,7 +160,6 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
                 except ideenergy.ClientError:
                     LOGGER.exception(f"{ds.name}: error updating")
                     continue
-
                 if updated_data[ds] is None:
                     LOGGER.warning(f"{ds.name}: update returned None")
 

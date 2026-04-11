@@ -16,11 +16,15 @@
 # USA.
 
 
+from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 CONF_CONTRACT = "contract"
 CONFIG_ENTRY_VERSION = (
-    3  # Change to 4 after v3 release, No migration provided, intentional
+    3  # v2.1.3 2025-02-14
+    # Change to 4 after v3 release, No migration provided, intentional
+    # 4 v3.0.0a0
 )
 DOMAIN = "ideenergy"
 LOCAL_TZ = ZoneInfo("Europe/Madrid")
+UPDATE_INTERVAL = timedelta(minutes=5)

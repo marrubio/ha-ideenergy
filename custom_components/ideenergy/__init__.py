@@ -18,7 +18,6 @@
 
 import logging
 import os
-from datetime import timedelta
 
 import ideenergy
 from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
@@ -28,7 +27,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.loader import async_get_loaded_integration
 
-from .const import CONF_CONTRACT, DOMAIN
+from .const import CONF_CONTRACT, DOMAIN, UPDATE_INTERVAL
 from .coordinator import IDeEnergyDataCoordinator
 from .data import IntegrationIDeEnergyConfigEntry, IntegrationIDeEnergyRunTimeData
 from .store import IDeEnergyConfigEntryState
@@ -75,7 +74,7 @@ async def async_setup_entry(
         hass=hass,
         client=client,
         config_entry_state=config_entry_state,
-        update_interval=timedelta(seconds=30),
+        update_interval=UPDATE_INTERVAL,
     )
     await coordinator.async_config_entry_first_refresh()
     if not coordinator.last_update_success:
