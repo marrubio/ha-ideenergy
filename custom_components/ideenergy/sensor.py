@@ -238,7 +238,7 @@ class HistoricalConsumption(IDeEnergySensor):
 
 class HistoricalGeneration(IDeEnergySensor):
     I_DE_PLATFORM = PLATFORM
-    I_DE_ENTITY_NAME = "Accumulated Generation"
+    I_DE_ENTITY_NAME = "Historical Generation"
     I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.HISTORICAL_GENERATION}
 
     def get_statistic_metadata(self):
