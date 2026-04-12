@@ -16,5 +16,5 @@
     "ideenergy>=2.0.1.dev3",
     "homeassistant-historical-sensor==3.0.0a4"
   ],
-  "version": "2026.1.0"
+  "version": "3.0.0a1"
 }
