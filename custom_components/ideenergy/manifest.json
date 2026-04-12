@@ -1,6 +1,9 @@
 {
   "domain": "ideenergy",
   "name": "i-DE Energy Monitor",
+  "after_dependencies": [
+    "recorder"
+  ],
   "codeowners": [
     "@ldotlopez"
   ],
