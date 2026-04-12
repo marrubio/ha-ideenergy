@@ -95,12 +95,13 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
     def activate_dataset(self, dataset: IDeEnergyCoordinatorDataSet) -> None:
         self.dataset_counter[dataset.name] += 1
         if self.dataset_counter[dataset.name] == 1:
-            LOGGER.debug(f"dataset {dataset.name} enabled")
+            LOGGER.info(f"[{self._client}] dataset {dataset.name} enabled")
             # Fix a better place for this call, it's sub-optimal
             self.hass.async_create_task(self.async_request_refresh())
 
         LOGGER.debug(
-            f"dataset {dataset.name} ref_count incremented (count={self.dataset_counter[dataset.name]})"
+            f"[{self._client}] dataset {dataset.name} ref_count incremented"
+            + f" (count={self.dataset_counter[dataset.name]})"
         )
 
     def deactivate_dataset(self, dataset: IDeEnergyCoordinatorDataSet) -> None:
@@ -108,10 +109,11 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
             self.dataset_counter[dataset.name] -= 1
 
         LOGGER.debug(
-            f"dataset {dataset.name} ref_count decremented (count={self.dataset_counter[dataset.name]})"
+            f"[{self._client}] dataset {dataset.name} ref_count decremented"
+            + f" (count={self.dataset_counter[dataset.name]})"
         )
         if self.dataset_counter[dataset.name] == 0:
-            LOGGER.debug(f"dataset {dataset.name} disabled")
+            LOGGER.info(f"[{self._client}] dataset {dataset.name} disabled")
 
     async def _async_setup(self) -> None:
         """Set up the coordinator
@@ -144,7 +146,7 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
 
         active_datasets = [k for k, v in self.dataset_counter.items() if v > 0]
         dsstr = ", ".join(active_datasets)
-        LOGGER.debug(f"datasets enabled: {dsstr}")
+        LOGGER.debug(f"[{self._client}] datasets enabled: {dsstr}")
 
         updated_data = {}
 
@@ -153,15 +155,24 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
             IDeEnergyCoordinatorDataSet.HISTORICAL_GENERATION: self._async_get_historical_generation,
             IDeEnergyCoordinatorDataSet.POWER_DEMAND_PEAKS: self._async_get_power_demand_peaks,
         }
+        await self._client.renew_session()
+        LOGGER.info(f"[{self._client}] session renewed")
+
         for ds, fn in fns.items():
             if self.dataset_counter[ds.name] > 0:
                 try:
                     updated_data[ds] = await fn()
                 except ideenergy.ClientError:
-                    LOGGER.exception(f"{ds.name}: error updating")
+                    LOGGER.exception(
+                        f"[{self._client}] error updating dataset '{ds.name}'"
+                    )
                     continue
                 if updated_data[ds] is None:
-                    LOGGER.warning(f"{ds.name}: update returned None")
+                    LOGGER.info(
+                        f"[{self._client}] {ds.name}: dataset was not refreshed"
+                    )
+                else:
+                    LOGGER.info(f"[{self._client}] {ds.name}: dataset updated")
 
         data = self.data | {k: v for k, v in updated_data.items() if v is not None}
         return data
@@ -207,7 +218,7 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
                     # attributes={"last_reset": last_reset},
                 )
             except Exception:
-                LOGGER.error(f"invalid DemandAtInstant '{dai!r}'")
+                LOGGER.exception(f"[{self._client}] invalid DemandAtInstant '{dai!r}'")
                 return None
 
         data = await self._client.get_historical_power_demand()
@@ -242,21 +253,21 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
                     attributes={"last_reset": last_reset},
                 )
             except Exception:
-                LOGGER.error(f"invalid PeriodValue '{pv!r}'")
+                LOGGER.error(f"[{self._client}] invalid PeriodValue '{pv!r}'")
                 return None
 
         if self.state_timestamp_is_too_recent(
             last_success_state_key,
             last_success_max_age,
         ):
-            LOGGER.debug(f"{self._client}: current data for {dataset} is too recent")
+            LOGGER.debug(f"[{self._client}] current data for {dataset} is too recent")
             return None
 
         if self.state_timestamp_is_too_recent(
             last_attempt_state_key,
             last_attempt_max_age,
         ):
-            LOGGER.debug(f"{self._client}: last attempt for {dataset} is too recent")
+            LOGGER.debug(f"[{self._client}] last attempt for {dataset} is too recent")
             return None
 
         end = datetime.today()
