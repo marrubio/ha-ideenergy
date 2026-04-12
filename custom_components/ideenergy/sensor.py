@@ -45,7 +45,11 @@ from homeassistant_historical_sensor import (
     hass_get_last_statistic,
 )
 
-from .coordinator import IDeEnergyCoordinatorDataSet, IDeEnergyDataCoordinator
+from .coordinator import (
+    MEASURE_ACCUMULATED_KEY,
+    IDeEnergyCoordinatorDataSet,
+    IDeEnergyDataCoordinator,
+)
 from .data import IntegrationIDeEnergyConfigEntry
 
 PLATFORM = "sensor"
@@ -219,6 +223,73 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
         return ret
 
 
+class AccumulatedConsumption(CoordinatorEntity, SensorEntity):
+    I_DE_PLATFORM = PLATFORM
+    I_DE_ENTITY_NAME = "Accumulated Consumption"
+    I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.DIRECT_READING}
+
+    coordinator: IDeEnergyDataCoordinator
+
+    def __init__(
+        self,
+        *args,
+        hass: HomeAssistant,
+        device_info: DeviceInfo,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+
+        self._attr_has_entity_name = True
+        self._attr_name = self.I_DE_ENTITY_NAME
+        self._attr_device_info = device_info
+
+        self._attr_unique_id = _build_entity_unique_id(
+            device_info, self.I_DE_ENTITY_NAME
+        )
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if self.available:
+            self.async_write_ha_state()
+
+    @property
+    def state(self) -> float:
+        return self.coordinator.data[IDeEnergyCoordinatorDataSet.DIRECT_READING][
+            MEASURE_ACCUMULATED_KEY
+        ]
+
+    @property
+    def available(self) -> bool:
+        dr = self.coordinator.data.get(IDeEnergyCoordinatorDataSet.DIRECT_READING)
+
+        if dr is None or MEASURE_ACCUMULATED_KEY not in dr:
+            return False
+
+        return True
+
+    # ==
+    # Entity
+    # ==
+    async def async_added_to_hass(self) -> None:
+        LOGGER.info(f"{self.entity_id} added to hass")
+        await super().async_added_to_hass()
+
+        for x in self.I_DE_DATA_SET:
+            self.coordinator.activate_dataset(x)
+
+        # await self.async_update_historical()
+        await self.coordinator.async_request_refresh()
+        # await self.async_write_historical()
+        LOGGER.info(f"{self.entity_id} updated historical")
+
+    async def async_will_remove_from_hass(self) -> None:
+        for x in self.I_DE_DATA_SET:
+            self.coordinator.deactivate_dataset(x)
+
+        await super().async_will_remove_from_hass()
+
+
 class HistoricalConsumption(IDeEnergySensor):
     I_DE_PLATFORM = PLATFORM
     I_DE_ENTITY_NAME = "Historical Consumption"
@@ -303,7 +374,7 @@ async def async_setup_entry(
     #     ),
     # )
 
-    IDeClasses = [HistoricalConsumption, HistoricalGeneration]
+    IDeClasses = [AccumulatedConsumption, HistoricalConsumption, HistoricalGeneration]
     async_add_entities(
         [
             IDeClass(

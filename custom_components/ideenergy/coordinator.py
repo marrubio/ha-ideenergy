@@ -32,24 +32,30 @@ from .store import IDeEnergyConfigEntryState
 
 LOGGER = getLogger(__name__)
 
+# Direct reading (accumulated consumption, instant demand)
+DIRECT_READING_LAST_SUCCESS_STORED_STATE_KEY = "direct_reading_last_success"
+DIRECT_READING_LAST_ATTEMPT_STORED_STATE_KEY = "direct_reading_last_attempt"
+DIRECT_READING_LAST_SUCCESS_MAX_AGE = 6 * 60 * 60  # 6 hours
+DIRECT_READING_LAST_ATTEMPT_MAX_AGE = 5 * 60  # 5 minutes
 
+# Historical consumption
 HISTORICAL_CONSUMPTION_LAST_SUCCESS_STORED_STATE_KEY = (
     "historical_consumption_last_success"
 )
 HISTORICAL_CONSUMPTION_LAST_ATTEMPT_STORED_STATE_KEY = (
     "historical_consumption_last_attempt"
 )
+HISTORICAL_CONSUMPTION_LAST_SUCCESS_MAX_AGE = 12 * 60 * 60  # 12 hours
+HISTORICAL_CONSUMPTION_LAST_ATTEMPT_MAX_AGE = 5 * 60  # 5 minutes
+
+# Historical Generation
 HISTORICAL_GENERATION_LAST_SUCCESS_STORED_STATE_KEY = (
     "historical_generation_last_success"
 )
 HISTORICAL_GENERATION_LAST_ATTEMPT_STORED_STATE_KEY = (
     "historical_generation_last_attempt"
 )
-
-
-HISTORICAL_CONSUMPTION_LAST_SUCCESS_MAX_AGE = 2 * 60 * 60
-HISTORICAL_CONSUMPTION_LAST_ATTEMPT_MAX_AGE = 5 * 60  # 5 minutes
-HISTORICAL_GENERATION_LAST_SUCCESS_MAX_AGE = 2 * 60 * 60
+HISTORICAL_GENERATION_LAST_SUCCESS_MAX_AGE = 12 * 60 * 60  # 12 hours
 HISTORICAL_GENERATION_LAST_ATTEMPT_MAX_AGE = 5 * 60  # 5 minutes
 
 MEASURE_ACCUMULATED_KEY = "measure_accumulated"
@@ -62,6 +68,7 @@ HISTORICAL_PERIOD_LENGHT = timedelta(days=7)
 # IDeEnergyCoordinatorDataSet: types of data that can be registered in the
 # coordinator to be fetched
 class IDeEnergyCoordinatorDataSet(enum.Enum):
+    DIRECT_READING = enum.auto()
     HISTORICAL_CONSUMPTION = enum.auto()
     HISTORICAL_GENERATION = enum.auto()
     POWER_DEMAND_PEAKS = enum.auto()
@@ -154,6 +161,7 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
             IDeEnergyCoordinatorDataSet.HISTORICAL_CONSUMPTION: self._async_get_historical_consumption,
             IDeEnergyCoordinatorDataSet.HISTORICAL_GENERATION: self._async_get_historical_generation,
             IDeEnergyCoordinatorDataSet.POWER_DEMAND_PEAKS: self._async_get_power_demand_peaks,
+            IDeEnergyCoordinatorDataSet.DIRECT_READING: self._async_get_direct_reading_data,
         }
         await self._client.renew_session()
         LOGGER.info(f"[{self._client}] session renewed")
@@ -178,7 +186,35 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
         return data
 
     async def _async_get_direct_reading_data(self) -> dict[str, int | float]:
-        data = await self._client.get_measure()
+        if self.state_timestamp_is_too_recent(
+            DIRECT_READING_LAST_SUCCESS_STORED_STATE_KEY,
+            DIRECT_READING_LAST_SUCCESS_MAX_AGE,
+        ):
+            LOGGER.debug(
+                f"[{self._client}] current data for DIRECT_READING is too recent"
+            )
+            return None
+
+        if self.state_timestamp_is_too_recent(
+            DIRECT_READING_LAST_ATTEMPT_STORED_STATE_KEY,
+            DIRECT_READING_LAST_ATTEMPT_MAX_AGE,
+        ):
+            LOGGER.debug(
+                f"[{self._client}] last attempt for DIRECT_READING is too recent"
+            )
+            return None
+
+        try:
+            data = await self._client.get_measure()
+        except Exception:
+            await self.async_save_timestamp_at_state(
+                DIRECT_READING_LAST_ATTEMPT_STORED_STATE_KEY
+            )
+            raise
+
+        await self.async_save_timestamp_at_state(
+            DIRECT_READING_LAST_SUCCESS_STORED_STATE_KEY
+        )
         return {
             MEASURE_ACCUMULATED_KEY: data.accumulate,
             MEASURE_INSTANT_KEY: data.instant,
