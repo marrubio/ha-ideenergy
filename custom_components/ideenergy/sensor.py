@@ -302,6 +302,8 @@ class HistoricalGeneration(IDeEnergySensor):
     I_DE_ENTITY_NAME = "Historical Generation"
     I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.HISTORICAL_GENERATION}
 
+    _attr_entity_registry_enabled_default = False
+
     def get_statistic_metadata(self):
         meta = super().get_statistic_metadata()
         meta["unit_class"] = SensorDeviceClass.ENERGY
