@@ -27,4 +27,4 @@ CONFIG_ENTRY_VERSION = (
 )
 DOMAIN = "ideenergy"
 LOCAL_TZ = ZoneInfo("Europe/Madrid")
-UPDATE_INTERVAL = timedelta(minutes=5)
+UPDATE_INTERVAL = timedelta(seconds=180)

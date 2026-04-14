@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import enum
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -35,8 +36,8 @@ LOGGER = getLogger(__name__)
 # Direct reading (accumulated consumption, instant demand)
 DIRECT_READING_LAST_SUCCESS_STORED_STATE_KEY = "direct_reading_last_success"
 DIRECT_READING_LAST_ATTEMPT_STORED_STATE_KEY = "direct_reading_last_attempt"
-DIRECT_READING_LAST_SUCCESS_MAX_AGE = 6 * 60 * 60  # 6 hours
-DIRECT_READING_LAST_ATTEMPT_MAX_AGE = 5 * 60  # 5 minutes
+DIRECT_READING_LAST_SUCCESS_MAX_AGE = timedelta(hours=6)
+DIRECT_READING_LAST_ATTEMPT_MAX_AGE = timedelta(minutes=5)
 
 # Historical consumption
 HISTORICAL_CONSUMPTION_LAST_SUCCESS_STORED_STATE_KEY = (
@@ -45,8 +46,8 @@ HISTORICAL_CONSUMPTION_LAST_SUCCESS_STORED_STATE_KEY = (
 HISTORICAL_CONSUMPTION_LAST_ATTEMPT_STORED_STATE_KEY = (
     "historical_consumption_last_attempt"
 )
-HISTORICAL_CONSUMPTION_LAST_SUCCESS_MAX_AGE = 12 * 60 * 60  # 12 hours
-HISTORICAL_CONSUMPTION_LAST_ATTEMPT_MAX_AGE = 5 * 60  # 5 minutes
+HISTORICAL_CONSUMPTION_LAST_SUCCESS_MAX_AGE = timedelta(hours=12)
+HISTORICAL_CONSUMPTION_LAST_ATTEMPT_MAX_AGE = timedelta(minutes=5)
 
 # Historical Generation
 HISTORICAL_GENERATION_LAST_SUCCESS_STORED_STATE_KEY = (
@@ -55,8 +56,8 @@ HISTORICAL_GENERATION_LAST_SUCCESS_STORED_STATE_KEY = (
 HISTORICAL_GENERATION_LAST_ATTEMPT_STORED_STATE_KEY = (
     "historical_generation_last_attempt"
 )
-HISTORICAL_GENERATION_LAST_SUCCESS_MAX_AGE = 12 * 60 * 60  # 12 hours
-HISTORICAL_GENERATION_LAST_ATTEMPT_MAX_AGE = 5 * 60  # 5 minutes
+HISTORICAL_GENERATION_LAST_SUCCESS_MAX_AGE = timedelta(hours=12)
+HISTORICAL_GENERATION_LAST_ATTEMPT_MAX_AGE = timedelta(minutes=5)
 
 MEASURE_ACCUMULATED_KEY = "measure_accumulated"
 MEASURE_INSTANT_KEY = "measure_instant"
@@ -187,35 +188,26 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
         return data
 
     async def _async_get_direct_reading_data(self) -> dict[str, int | float]:
-        if self.state_timestamp_is_too_recent(
-            DIRECT_READING_LAST_SUCCESS_STORED_STATE_KEY,
-            DIRECT_READING_LAST_SUCCESS_MAX_AGE,
+        if self._state_is_too_recent_with_debug(
+            key=DIRECT_READING_LAST_SUCCESS_STORED_STATE_KEY,
+            max_age=DIRECT_READING_LAST_SUCCESS_MAX_AGE,
+            label="DIRECT_READING success check",
         ):
-            LOGGER.debug(
-                f"[{self._client}] current data for DIRECT_READING is too recent"
-            )
             return None
 
-        if self.state_timestamp_is_too_recent(
-            DIRECT_READING_LAST_ATTEMPT_STORED_STATE_KEY,
-            DIRECT_READING_LAST_ATTEMPT_MAX_AGE,
+        if self._state_is_too_recent_with_debug(
+            key=DIRECT_READING_LAST_ATTEMPT_STORED_STATE_KEY,
+            max_age=DIRECT_READING_LAST_ATTEMPT_MAX_AGE,
+            label="DIRECT_READING attempt check",
         ):
-            LOGGER.debug(
-                f"[{self._client}] last attempt for DIRECT_READING is too recent"
-            )
             return None
 
-        try:
+        async with self._track_state_timestamps(
+            success_key=DIRECT_READING_LAST_SUCCESS_STORED_STATE_KEY,
+            attempt_key=DIRECT_READING_LAST_ATTEMPT_STORED_STATE_KEY,
+        ):
             data = await self._client.get_measure()
-        except Exception:
-            await self.async_save_timestamp_at_state(
-                DIRECT_READING_LAST_ATTEMPT_STORED_STATE_KEY
-            )
-            raise
 
-        await self.async_save_timestamp_at_state(
-            DIRECT_READING_LAST_SUCCESS_STORED_STATE_KEY
-        )
         return {
             MEASURE_ACCUMULATED_KEY: data.accumulate,
             MEASURE_INSTANT_KEY: data.instant,
@@ -271,11 +263,33 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
         afn: Callable,
         *,
         dataset=IDeEnergyCoordinatorDataSet,
-        last_attempt_max_age: float,
+        last_attempt_max_age: timedelta,
         last_attempt_state_key: str,
-        last_success_max_age: float,
+        last_success_max_age: timedelta,
         last_success_state_key: str,
     ) -> list[HistoricalState] | None:
+        if self._state_is_too_recent_with_debug(
+            key=last_success_state_key,
+            max_age=last_success_max_age,
+            label=f"{dataset.name} success check",
+        ):
+            return None
+
+        if self._state_is_too_recent_with_debug(
+            key=last_attempt_state_key,
+            max_age=last_attempt_max_age,
+            label=f"{dataset.name} attempt check",
+        ):
+            return None
+
+        end = datetime.today()
+        start = end - HISTORICAL_PERIOD_LENGHT
+
+        async with self._track_state_timestamps(
+            success_key=last_success_state_key,
+            attempt_key=last_attempt_state_key,
+        ):
+            data = await afn(start=start, end=end)
 
         def as_historical_state(
             pv: ideenergy.PeriodValue,
@@ -293,51 +307,67 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
                 LOGGER.error(f"[{self._client}] invalid PeriodValue '{pv!r}'")
                 return None
 
-        if self.state_timestamp_is_too_recent(
-            last_success_state_key,
-            last_success_max_age,
-        ):
-            LOGGER.debug(f"[{self._client}] current data for {dataset} is too recent")
-            return None
-
-        if self.state_timestamp_is_too_recent(
-            last_attempt_state_key,
-            last_attempt_max_age,
-        ):
-            LOGGER.debug(f"[{self._client}] last attempt for {dataset} is too recent")
-            return None
-
-        end = datetime.today()
-        start = end - HISTORICAL_PERIOD_LENGHT
-
-        try:
-            data = await afn(start=start, end=end)
-        except Exception:
-            await self.async_save_timestamp_at_state(last_attempt_state_key)
-            raise
-
-        await self.async_save_timestamp_at_state(last_success_state_key)
-
         hist_states = [as_historical_state(pv) for pv in data.periods]
         hist_states = [hs for hs in hist_states if hs is not None]
         return hist_states
 
-    async def async_save_timestamp_at_state(
+    async def _async_save_state_timestamp(
         self, key: str, timestamp: float | None = None
     ) -> None:
-        timestamp = timestamp or dt_util.as_timestamp(datetime.now())
+        timestamp = timestamp or dt_util.as_timestamp(dt_util.now())
         self._config_entry_state.data[key] = timestamp
         await self._config_entry_state.async_save()
 
-    def state_timestamp_is_too_recent(self, key: str, max_age: float) -> bool:
-        now_ts = dt_util.as_timestamp(datetime.now())
+    @contextlib.asynccontextmanager
+    async def _track_state_timestamps(self, *, success_key: str, attempt_key: str):
+        """Context manager to track state timestamps on success/failure."""
+        try:
+            yield
+        except Exception:
+            await self._async_save_state_timestamp(attempt_key)
+            raise
+        else:
+            await self._async_save_state_timestamp(success_key)
+
+    def _state_is_too_recent_with_debug(
+        self, *, key: str, max_age: timedelta, label: str
+    ) -> bool:
+        """Check if max_age timedelta has passed since key was last updated.
+
+        Args:
+            key: The state key to check
+            max_age: The maximum age timedelta
+            label: Debug label for logging
+
+        Returns:
+            True if not enough time has passed (too recent), False if enough time has passed
+        """
+        now_dt = dt_util.now()
+        max_age_seconds = max_age.total_seconds()
 
         try:
-            prev = float(self._config_entry_state.data[key])
+            prev_ts = float(self._config_entry_state.data[key])
         except TypeError, ValueError, KeyError:
-            prev = 0
+            LOGGER.debug(f"[{self._client}] {label}: no previous timestamp found")
+            return False
 
-        return now_ts - prev <= max_age
+        prev_dt = dt_util.as_local(datetime.fromtimestamp(prev_ts))
+        elapsed = now_dt - prev_dt
+        is_too_recent = elapsed.total_seconds() <= max_age_seconds
+
+        if is_too_recent:
+            fulfillment_dt = prev_dt + max_age
+            remaining_seconds = max_age_seconds - elapsed.total_seconds()
+
+            LOGGER.debug(
+                f"[{self._client}] {label}: too recent - "
+                f"last check: {prev_dt.isoformat()}, "
+                f"required interval: {max_age}, "
+                f"remaining time: {remaining_seconds:.0f}s "
+                f"(will be ready at {fulfillment_dt.isoformat()})"
+            )
+
+        return is_too_recent
 
 
 # def period_item_with_tz_info(item):
