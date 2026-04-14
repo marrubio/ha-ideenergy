@@ -84,6 +84,7 @@ type IDeEnergyDataCoordinatorData = dict[
 class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorData]):
     def __init__(
         self,
+        *,
         hass: HomeAssistant,
         client: ideenergy.Client,
         config_entry_state: IDeEnergyConfigEntryState,

@@ -16,12 +16,8 @@
 # USA.
 
 
-# TODO:
-# Maybe we need to mark some function as callback but I'm not sure whose.
-
-
 import itertools
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import cached_property
 from logging import getLogger
 from math import ceil
@@ -29,9 +25,10 @@ from typing import cast
 
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
-    SensorEntityDescription,
+    SensorStateClass,
 )
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback, dt_util
@@ -66,7 +63,6 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
     def __init__(
         self,
         *args,
-        hass: HomeAssistant,
         device_info: DeviceInfo,
         **kwargs,
     ):
@@ -223,7 +219,7 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
         return ret
 
 
-class AccumulatedConsumption(CoordinatorEntity, SensorEntity):
+class AccumulatedConsumption(RestoreSensor, CoordinatorEntity, SensorEntity):
     I_DE_PLATFORM = PLATFORM
     I_DE_ENTITY_NAME = "Accumulated Consumption"
     I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.DIRECT_READING}
@@ -233,7 +229,6 @@ class AccumulatedConsumption(CoordinatorEntity, SensorEntity):
     def __init__(
         self,
         *args,
-        hass: HomeAssistant,
         device_info: DeviceInfo,
         **kwargs,
     ):
@@ -241,32 +236,22 @@ class AccumulatedConsumption(CoordinatorEntity, SensorEntity):
 
         self._attr_has_entity_name = True
         self._attr_name = self.I_DE_ENTITY_NAME
-        self._attr_device_info = device_info
-
         self._attr_unique_id = _build_entity_unique_id(
             device_info, self.I_DE_ENTITY_NAME
         )
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_device_info = device_info
+        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
+        self._attr_native_value = None
+        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        if self.available:
+        reading = self.coordinator.data.get(IDeEnergyCoordinatorDataSet.DIRECT_READING)
+        if reading and MEASURE_ACCUMULATED_KEY in reading:
+            self._attr_native_value = reading[MEASURE_ACCUMULATED_KEY]
             self.async_write_ha_state()
-
-    @property
-    def state(self) -> float:
-        return self.coordinator.data[IDeEnergyCoordinatorDataSet.DIRECT_READING][
-            MEASURE_ACCUMULATED_KEY
-        ]
-
-    @property
-    def available(self) -> bool:
-        dr = self.coordinator.data.get(IDeEnergyCoordinatorDataSet.DIRECT_READING)
-
-        if dr is None or MEASURE_ACCUMULATED_KEY not in dr:
-            return False
-
-        return True
 
     # ==
     # Entity
@@ -278,10 +263,16 @@ class AccumulatedConsumption(CoordinatorEntity, SensorEntity):
         for x in self.I_DE_DATA_SET:
             self.coordinator.activate_dataset(x)
 
-        # await self.async_update_historical()
         await self.coordinator.async_request_refresh()
-        # await self.async_write_historical()
         LOGGER.info(f"{self.entity_id} updated historical")
+
+        prev = await self.async_get_last_sensor_data()
+        LOGGER.debug(f"{self.entity_id} last sensor data: {prev!r}")
+        if prev is not None and prev.native_value is not None:
+            self._attr_native_value = prev.native_value
+            LOGGER.debug(f"{self.entity_id} restored previous value of {self.state}")
+        else:
+            LOGGER.debug(f"{self.entity_id} no previous sensor data to restore")
 
     async def async_will_remove_from_hass(self) -> None:
         for x in self.I_DE_DATA_SET:
@@ -366,22 +357,12 @@ async def async_setup_entry(
     entry: IntegrationIDeEnergyConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    # entity_description = (
-    #     SensorEntityDescription(
-    #         key="ideenergy",
-    #         name="i-de energy",
-    #         icon="mdi:energy",
-    #     ),
-    # )
-
     IDeClasses = [AccumulatedConsumption, HistoricalConsumption, HistoricalGeneration]
     async_add_entities(
         [
             IDeClass(
-                hass=hass,
                 coordinator=entry.runtime_data.coordinator,
                 device_info=entry.runtime_data.device_info,
-                # entity_description=entity_description,
             )
             for IDeClass in IDeClasses
         ]
