@@ -16,7 +16,6 @@
 # USA.
 
 
-from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 CONF_CONTRACT = "contract"
@@ -27,4 +26,8 @@ CONFIG_ENTRY_VERSION = (
 )
 DOMAIN = "ideenergy"
 LOCAL_TZ = ZoneInfo("Europe/Madrid")
-UPDATE_INTERVAL = timedelta(seconds=180)
+
+# Hour and minute (local time, Europe/Madrid) at which the daily data fetch runs.
+# i-DE typically publishes yesterday's data mid-morning; 12:30 is a safe window.
+UPDATE_HOUR = 12
+UPDATE_MINUTE = 30

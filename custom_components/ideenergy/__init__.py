@@ -25,9 +25,10 @@ from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
+from homeassistant.helpers.event import async_track_time_change
 from homeassistant.loader import async_get_loaded_integration
 
-from .const import CONF_CONTRACT, DOMAIN, UPDATE_INTERVAL
+from .const import CONF_CONTRACT, DOMAIN, LOCAL_TZ, UPDATE_HOUR, UPDATE_MINUTE
 from .coordinator import IDeEnergyDataCoordinator
 from .data import IntegrationIDeEnergyConfigEntry, IntegrationIDeEnergyRunTimeData
 from .store import IDeEnergyConfigEntryState
@@ -70,11 +71,14 @@ async def async_setup_entry(
     ##
     # Setup coordinator
     # https://developers.home-assistant.io/docs/integration_fetching_data
+    # update_interval=None disables automatic polling; a daily time trigger is
+    # registered below so the fetch runs at a predictable hour when i-DE data
+    # is guaranteed to be available (avoids early-morning "no data yet" errors).
     coordinator = IDeEnergyDataCoordinator(
         hass=hass,
         client=client,
         config_entry_state=config_entry_state,
-        update_interval=UPDATE_INTERVAL,
+        update_interval=None,
     )
     await coordinator.async_config_entry_first_refresh()
     if not coordinator.last_update_success:
@@ -87,6 +91,26 @@ async def async_setup_entry(
         # config_entry_state=config_entry_state,
         integration=async_get_loaded_integration(hass, entry.domain),
         device_info=device_info,
+    )
+
+    ##
+    # Schedule daily refresh at UPDATE_HOUR:UPDATE_MINUTE (local time)
+    def _schedule_daily_refresh(now=None) -> None:  # noqa: ARG001
+        LOGGER.debug(
+            "Scheduled daily refresh triggered at %s:%02d (Europe/Madrid)",
+            UPDATE_HOUR,
+            UPDATE_MINUTE,
+        )
+        hass.async_create_task(coordinator.async_request_refresh())
+
+    entry.async_on_unload(
+        async_track_time_change(
+            hass,
+            _schedule_daily_refresh,
+            hour=UPDATE_HOUR,
+            minute=UPDATE_MINUTE,
+            second=0,
+        )
     )
 
     ##

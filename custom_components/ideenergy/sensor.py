@@ -16,8 +16,12 @@
 # USA.
 
 
+# TODO:
+# Maybe we need to mark some function as callback but I'm not sure whose.
+
+
 import itertools
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import cached_property
 from logging import getLogger
 from math import ceil
@@ -25,15 +29,16 @@ from typing import cast
 
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
 from homeassistant.components.sensor import (
-    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
+    SensorEntityDescription,
     SensorStateClass,
 )
 from homeassistant.const import UnitOfEnergy
 from homeassistant.core import HomeAssistant, callback, dt_util
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 from homeassistant_historical_sensor import (
@@ -42,11 +47,7 @@ from homeassistant_historical_sensor import (
     hass_get_last_statistic,
 )
 
-from .coordinator import (
-    MEASURE_ACCUMULATED_KEY,
-    IDeEnergyCoordinatorDataSet,
-    IDeEnergyDataCoordinator,
-)
+from .coordinator import IDeEnergyCoordinatorDataSet, IDeEnergyDataCoordinator
 from .data import IntegrationIDeEnergyConfigEntry
 
 PLATFORM = "sensor"
@@ -63,6 +64,7 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
     def __init__(
         self,
         *args,
+        hass: HomeAssistant,
         device_info: DeviceInfo,
         **kwargs,
     ):
@@ -176,7 +178,7 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
 
         try:
             total_accumulated = extract_last_sum(latest)
-        except KeyError, ValueError:
+        except (KeyError, ValueError):
             LOGGER.error(
                 f"{self.entity_id}: [bug] statistics broken (lastest={latest!r})"
             )
@@ -219,68 +221,6 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
         return ret
 
 
-class AccumulatedConsumption(RestoreSensor, CoordinatorEntity, SensorEntity):
-    I_DE_PLATFORM = PLATFORM
-    I_DE_ENTITY_NAME = "Accumulated Consumption"
-    I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.DIRECT_READING}
-
-    coordinator: IDeEnergyDataCoordinator
-
-    def __init__(
-        self,
-        *args,
-        device_info: DeviceInfo,
-        **kwargs,
-    ):
-        super().__init__(*args, **kwargs)
-
-        self._attr_has_entity_name = True
-        self._attr_name = self.I_DE_ENTITY_NAME
-        self._attr_unique_id = _build_entity_unique_id(
-            device_info, self.I_DE_ENTITY_NAME
-        )
-        self._attr_device_class = SensorDeviceClass.ENERGY
-        self._attr_device_info = device_info
-        self._attr_native_unit_of_measurement = UnitOfEnergy.KILO_WATT_HOUR
-        self._attr_native_value = None
-        self._attr_state_class = SensorStateClass.TOTAL_INCREASING
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        reading = self.coordinator.data.get(IDeEnergyCoordinatorDataSet.DIRECT_READING)
-        if reading and MEASURE_ACCUMULATED_KEY in reading:
-            self._attr_native_value = reading[MEASURE_ACCUMULATED_KEY]
-            self.async_write_ha_state()
-
-    # ==
-    # Entity
-    # ==
-    async def async_added_to_hass(self) -> None:
-        LOGGER.info(f"{self.entity_id} added to hass")
-        await super().async_added_to_hass()
-
-        for x in self.I_DE_DATA_SET:
-            self.coordinator.activate_dataset(x)
-
-        await self.coordinator.async_request_refresh()
-        LOGGER.info(f"{self.entity_id} updated historical")
-
-        prev = await self.async_get_last_sensor_data()
-        LOGGER.debug(f"{self.entity_id} last sensor data: {prev!r}")
-        if prev is not None and prev.native_value is not None:
-            self._attr_native_value = prev.native_value
-            LOGGER.debug(f"{self.entity_id} restored previous value of {self.state}")
-        else:
-            LOGGER.debug(f"{self.entity_id} no previous sensor data to restore")
-
-    async def async_will_remove_from_hass(self) -> None:
-        for x in self.I_DE_DATA_SET:
-            self.coordinator.deactivate_dataset(x)
-
-        await super().async_will_remove_from_hass()
-
-
 class HistoricalConsumption(IDeEnergySensor):
     I_DE_PLATFORM = PLATFORM
     I_DE_ENTITY_NAME = "Historical Consumption"
@@ -302,8 +242,6 @@ class HistoricalGeneration(IDeEnergySensor):
     I_DE_ENTITY_NAME = "Historical Generation"
     I_DE_DATA_SET = {IDeEnergyCoordinatorDataSet.HISTORICAL_GENERATION}
 
-    _attr_entity_registry_enabled_default = False
-
     def get_statistic_metadata(self):
         meta = super().get_statistic_metadata()
         meta["unit_class"] = SensorDeviceClass.ENERGY
@@ -313,6 +251,70 @@ class HistoricalGeneration(IDeEnergySensor):
     @property
     def historical_states(self) -> list[HistoricalState] | None:
         return self.coordinator.data[IDeEnergyCoordinatorDataSet.HISTORICAL_GENERATION]
+
+
+class YesterdayTotal(CoordinatorEntity, SensorEntity):
+    coordinator: IDeEnergyDataCoordinator
+
+    def __init__(
+        self,
+        *args,
+        hass: HomeAssistant,
+        device_info: DeviceInfo,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+
+        self._attr_has_entity_name = True
+        self._attr_name = "Yesterday Total"
+        self._attr_device_info = device_info
+
+        self._attr_unique_id = _build_entity_unique_id(
+            device_info, "Yesterday Total"
+        )
+        self._attr_device_class = SensorDeviceClass.ENERGY
+        self._attr_native_unit_of_measurement = UnitOfEnergy.WATT_HOUR
+        self._attr_state_class = SensorStateClass.TOTAL
+        self._attr_extra_state_attributes = {
+            "LAST_REFRESH": None,
+            "YESTERDAY_DATE": None,
+        }
+
+    async def async_added_to_hass(self) -> None:
+        LOGGER.info(f"{self.entity_id} added to hass")
+        await super().async_added_to_hass()
+        self.coordinator.activate_dataset(
+            IDeEnergyCoordinatorDataSet.YESTERDAY_TOTAL
+        )
+        await self.coordinator.async_request_refresh()
+
+    async def async_will_remove_from_hass(self) -> None:
+        self.coordinator.deactivate_dataset(
+            IDeEnergyCoordinatorDataSet.YESTERDAY_TOTAL
+        )
+        await super().async_will_remove_from_hass()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self._attr_extra_state_attributes = {
+            "LAST_REFRESH": self.coordinator.yesterday_total_last_refresh,
+            "YESTERDAY_DATE": self.coordinator.yesterday_total_query_date,
+        }
+        super()._handle_coordinator_update()
+
+    @property
+    def native_value(self) -> float | None:
+        return cast(
+            float | None,
+            self.coordinator.data[IDeEnergyCoordinatorDataSet.YESTERDAY_TOTAL],
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str | None]:
+        return {
+            "LAST_REFRESH": self.coordinator.yesterday_total_last_refresh,
+            "YESTERDAY_DATE": self.coordinator.yesterday_total_query_date,
+        }
 
 
 ##
@@ -354,17 +356,69 @@ class HistoricalGeneration(IDeEnergySensor):
 #         ]  # ty:ignore[non-subscriptable]
 
 
+class LastRefreshTime(CoordinatorEntity, SensorEntity):
+    """Sensor that exposes the last successful data fetch timestamp."""
+
+    coordinator: IDeEnergyDataCoordinator
+
+    def __init__(
+        self,
+        *args,
+        hass: HomeAssistant,
+        device_info: DeviceInfo,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+
+        self._attr_has_entity_name = True
+        self._attr_name = "Last Refresh Time"
+        self._attr_device_info = device_info
+        self._attr_unique_id = _build_entity_unique_id(device_info, "Last Refresh Time")
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_icon = "mdi:clock-check-outline"
+
+    @property
+    def native_value(self) -> datetime | None:
+        return self.coordinator.yesterday_total_last_refresh_dt
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: IntegrationIDeEnergyConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    IDeClasses = [AccumulatedConsumption, HistoricalConsumption, HistoricalGeneration]
+    # entity_description = (
+    #     SensorEntityDescription(
+    #         key="ideenergy",
+    #         name="i-de energy",
+    #         icon="mdi:energy",
+    #     ),
+    # )
+
+    entity_registry = er.async_get(hass)
+    old_unique_ids = {
+        _build_entity_unique_id(entry.runtime_data.device_info, "Yesterday Power"),
+        _build_entity_unique_id(entry.runtime_data.device_info, "Yesterday Consumption"),
+    }
+    for registry_entry in er.async_entries_for_config_entry(
+        entity_registry, entry.entry_id
+    ):
+        if registry_entry.unique_id in old_unique_ids:
+            entity_registry.async_remove(registry_entry.entity_id)
+
+    IDeClasses = [
+        HistoricalConsumption,
+        HistoricalGeneration,
+        YesterdayTotal,
+        LastRefreshTime,
+    ]
     async_add_entities(
         [
             IDeClass(
+                hass=hass,
                 coordinator=entry.runtime_data.coordinator,
                 device_info=entry.runtime_data.device_info,
+                # entity_description=entity_description,
             )
             for IDeClass in IDeClasses
         ]
