@@ -2,21 +2,21 @@
 
 <!-- Home Assistant badges -->
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
-[![hassfest validation](https://github.com/ldotlopez/ha-ideenergy/workflows/Validate%20with%20hassfest/badge.svg)](https://github.com/ldotlopez/ha-ideenergy/actions/workflows/hassfest.yml)
-[![HACS validation](https://github.com/ldotlopez/ha-ideenergy/workflows/Validate%20with%20HACS/badge.svg)](https://github.com/ldotlopez/ha-ideenergy/actions/workflows/hacs.yml)
+[![hassfest validation](https://github.com/marrubio/ha-ideenergy/workflows/Validate%20with%20hassfest/badge.svg)](https://github.com/marrubio/ha-ideenergy/actions/workflows/hassfest.yml)
+[![HACS validation](https://github.com/marrubio/ha-ideenergy/workflows/Validate%20with%20HACS/badge.svg)](https://github.com/marrubio/ha-ideenergy/actions/workflows/hacs.yml)
 
 <!-- Code and releases -->
-![GitHub Release (latest SemVer including pre-releases)](https://img.shields.io/github/v/release/ldotlopez/ha-ideenergy?include_prereleases)
-[![CodeQL](https://github.com/ldotlopez/ha-ideenergy/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/ldotlopez/ha-ideenergy/actions/workflows/codeql-analysis.yml)
+![GitHub Release (latest SemVer including pre-releases)](https://img.shields.io/github/v/release/marrubio/ha-ideenergy?include_prereleases)
+[![CodeQL](https://github.com/marrubio/ha-ideenergy/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/marrubio/ha-ideenergy/actions/workflows/codeql-analysis.yml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
-[ideenergy](https://github.com/ldotlopez/ideenergy) integration for [home-assistant](https://home-assistant.io/)
+[ideenergy](https://github.com/marrubio/ideenergy) integration for [home-assistant](https://home-assistant.io/)
 
 Esta integración proporciona sensores para el distribuidor de energía español [i-DE](https://i-de.es).
 
 Requiere un usuario **avanzado** en la página web del distribuidor.
 
-**⚠️ Asegúrese de leer la [FAQ](https://github.com/ldotlopez/ha-ideenergy/blob/main/FAQ.md) y las secciones 'Advertencias' y 'Dependencias'.**
+**⚠️ Asegúrese de leer la [FAQ](https://github.com/marrubio/ha-ideenergy/blob/main/FAQ.md) y las secciones 'Advertencias' y 'Dependencias'.**
 
 ## Características
 
@@ -56,7 +56,7 @@ Además es necesario disponer del perfil de "Usuario avanzado". Si no se dispone
 
 ### Usando [HACS](https://hacs.xyz/) (recomendado)
 
-1. Copia la dirección de este repositorio: [https://github.com/ldotlopez/ha-ideenergy](https://github.com/ldotlopez/ha-ideenergy/)
+1. Copia la dirección de este repositorio: [https://github.com/marrubio/ha-ideenergy](https://github.com/marrubio/ha-ideenergy/)
 
 2. Añade este repositorio en HACS como "repositorio manual":
 
@@ -81,7 +81,7 @@ Además es necesario disponer del perfil de "Usuario avanzado". Si no se dispone
 
 A través de custom_components o [HACS](https://hacs.xyz/)
 
-1. Descarga o clona este repositorio: [https://github.com/ldotlopez/ha-ideenergy](https://github.com/ldotlopez/ha-ideenergy)
+1. Descarga o clona este repositorio: [https://github.com/marrubio/ha-ideenergy](https://github.com/marrubio/ha-ideenergy)
 
 2. Copia la carpeta `custom_components/ideenergy` en tu carpeta `custom_components` de tu instalación de Home Assistant.
 

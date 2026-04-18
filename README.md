@@ -2,21 +2,21 @@
 
 <!-- HomeAssistant badges -->
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/custom-components/hacs)
-[![hassfest validation](https://github.com/ldotlopez/ha-ideenergy/workflows/Validate%20with%20hassfest/badge.svg)](https://github.com/ldotlopez/ha-ideenergy/actions/workflows/hassfest.yml)
-[![HACS validation](https://github.com/ldotlopez/ha-ideenergy/workflows/Validate%20with%20HACS/badge.svg)](https://github.com/ldotlopez/ha-ideenergy/actions/workflows/hacs.yml)
+[![hassfest validation](https://github.com/marrubio/ha-ideenergy/workflows/Validate%20with%20hassfest/badge.svg)](https://github.com/marrubio/ha-ideenergy/actions/workflows/hassfest.yml)
+[![HACS validation](https://github.com/marrubio/ha-ideenergy/workflows/Validate%20with%20HACS/badge.svg)](https://github.com/marrubio/ha-ideenergy/actions/workflows/hacs.yml)
 
 <!-- Code and releases -->
-![GitHub Release (latest SemVer including pre-releases)](https://img.shields.io/github/v/release/ldotlopez/ha-ideenergy?include_prereleases)
-[![CodeQL](https://github.com/ldotlopez/ha-ideenergy/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/ldotlopez/ha-ideenergy/actions/workflows/codeql-analysis.yml)
+![GitHub Release (latest SemVer including pre-releases)](https://img.shields.io/github/v/release/marrubio/ha-ideenergy?include_prereleases)
+[![CodeQL](https://github.com/marrubio/ha-ideenergy/actions/workflows/codeql-analysis.yml/badge.svg)](https://github.com/marrubio/ha-ideenergy/actions/workflows/codeql-analysis.yml)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
 
-[ideenergy](https://github.com/ldotlopez/ideenergy) integration for [home-assistant](https://home-assistant.io/)
+[ideenergy](https://github.com/marrubio/ideenergy) integration for [home-assistant](https://home-assistant.io/)
 
 i-DE (Iberdrola Distribución) Custom Integration for Home Assistant, providing sensors for Spanish Energy Distributor [i-DE](https://i-de.es).
 
 This integration requires an **advanced** user profile on i-DE website.
 
-**⚠️ Make sure to read the '[FAQ](https://github.com/ldotlopez/ha-ideenergy/blob/main/FAQ.md)', 'Dependencies', and 'Warnings' sections.**
+**⚠️ Make sure to read the '[FAQ](https://github.com/marrubio/ha-ideenergy/blob/main/FAQ.md)', 'Dependencies', and 'Warnings' sections.**
 
 
 ## Features
@@ -59,7 +59,7 @@ It is also necessary to have an "Advanced User" profile. If you do not already h
 
 ### Using [HACS](https://hacs.xyz/) (recommended)
 
-1. Copy this repository URL: [https://github.com/ldotlopez/ha-ideenergy](https://github.com/ldotlopez/ha-ideenergy/)
+1. Copy this repository URL: [https://github.com/marrubio/ha-ideenergy](https://github.com/marrubio/ha-ideenergy/)
 
 2. In the HACS section, add this repository as a custom one:
 
@@ -84,7 +84,7 @@ It is also necessary to have an "Advanced User" profile. If you do not already h
 
 ### Manually
 
-1. Download/clone this repository: [https://github.com/ldotlopez/ha-ideenergy](https://github.com/ldotlopez/ha-ideenergy/)
+1. Download/clone this repository: [https://github.com/marrubio/ha-ideenergy](https://github.com/marrubio/ha-ideenergy/)
 
 2. Copy the `custom_components/ideenergy` folder into the `custom_components` folder of your Home Assistant installation.
 
@@ -99,10 +99,6 @@ It is also necessary to have an "Advanced User" profile. If you do not already h
 5. Follow the configuration steps: provide your credentials for access to i-DE and select the contract that you want to monitor. (Should you need to add more contracts, just follow the previous step as many times as needed).
 
 ## Snapshots
-
-*Accumulated energy sensor*
-
-![snapshot](screenshots/accumulated.png)
 
 *Historical energy sensor*
 
