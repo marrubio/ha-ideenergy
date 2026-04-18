@@ -16,7 +16,7 @@ i-DE (Iberdrola Distribución) Custom Integration for Home Assistant, providing 
 
 This integration requires an **advanced** user profile on i-DE website.
 
-**⚠️ Make sure to read the '[FAQ](https://github.com/ldotlopez/ha-ideenergy/blob/main/FAQ.md)', 'Dependencies' and 'Warning' sections**
+**⚠️ Make sure to read the '[FAQ](https://github.com/ldotlopez/ha-ideenergy/blob/main/FAQ.md)', 'Dependencies', and 'Warnings' sections.**
 
 
 ## Features
@@ -25,7 +25,7 @@ This integration requires an **advanced** user profile on i-DE website.
 
 * Daily consumption data by hourly slots (24 readings from the previous day).
 
-* Historical sensors (both consumption and solar generation) with better (sub-kWh) precision. This data is not realtime and usually has a 24-hour to 48-hour offset.
+* Historical sensors (both consumption and solar generation) with better (sub-kWh) precision. This data is not real-time and usually has a 24-hour to 48-hour offset.
 
 * New device entities:
   * Total consumption of yesterday.
@@ -39,7 +39,7 @@ This integration requires an **advanced** user profile on i-DE website.
 
 * API data retrieval is scheduled only at integration startup and once per day at 12:30, when previous-day data is expected to be available.
 
-* Fully [asynchronous](https://developers.home-assistant.io/docs/asyncio_index) and integrated with HomeAssistant.
+* Fully [asynchronous](https://developers.home-assistant.io/docs/asyncio_index) and integrated with Home Assistant.
 
 ## Adaptation notes
 
@@ -50,9 +50,9 @@ The integration now reads previous-day consumption by hourly slots (24 values). 
 
 ## Dependencies
 
-You must have an i-DE username and access to the Clients' website. You may register here: [Área Clientes | I-DE - Grupo Iberdrola](https://www.i-de.es/consumidores/web/guest/login).
+You must have an i-DE username and access to the client website. You may register here: [Área Clientes | I-DE - Grupo Iberdrola](https://www.i-de.es/consumidores/web/guest/login).
 
-It also necessary to have an "Advanced User" profile. Should you not have one already, you need to fill the request for from your [Profile Area](https://www.i-de.es/consumidores/web/home/personal-area/userData).
+It is also necessary to have an "Advanced User" profile. If you do not already have one, you need to submit the request form from your [Profile Area](https://www.i-de.es/consumidores/web/home/personal-area/userData).
 
 
 ## Installation
@@ -64,11 +64,11 @@ It also necessary to have an "Advanced User" profile. Should you not have one al
 2. In the HACS section, add this repository as a custom one:
 
 
-  - On the "repositorysitory" field put the URL copied before
+  - In the "Repository" field, paste the URL copied before.
   - On the "Category" select "Integration"
-  - Click the "Download" button and download latest version.
+  - Click the "Download" button and download the latest version.
 
-  ![Custom repositorysitory](https://user-images.githubusercontent.com/59612788/171965822-4a89c14e-9eb2-4134-8de2-1d3f380663e4.png)
+  ![Custom repository](https://user-images.githubusercontent.com/59612788/171965822-4a89c14e-9eb2-4134-8de2-1d3f380663e4.png)
 
 3. Restart HA
 
@@ -86,7 +86,7 @@ It also necessary to have an "Advanced User" profile. Should you not have one al
 
 1. Download/clone this repository: [https://github.com/ldotlopez/ha-ideenergy](https://github.com/ldotlopez/ha-ideenergy/)
 
-2. Copy the `custom_components/ideenergy` folder into your custom_components folder into your HA installation
+2. Copy the `custom_components/ideenergy` folder into the `custom_components` folder of your Home Assistant installation.
 
 3. Restart HA
 
@@ -114,9 +114,9 @@ It also necessary to have an "Advanced User" profile. Should you not have one al
 ![snapshot](screenshots/configuration-2.png)
 
 ## Warnings
-This extension provides an 'historical' sensor to incorporate data from the past into Home Assistant database. For your own safety the sensor is not enabled by default and must be enabled manually.
+This extension provides a 'historical' sensor to incorporate data from the past into the Home Assistant database. For your own safety, the sensor is not enabled by default and must be enabled manually.
 
-☠️ Historic sensor is based on a **high experimental hack** and can broke and/or corrupt your database and/or statistics. **Use at your own risk**.
+☠️ The historical sensor is based on a **highly experimental hack** and can break and/or corrupt your database and/or statistics. **Use at your own risk**.
 
 ## License
 

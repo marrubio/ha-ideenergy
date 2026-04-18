@@ -12,19 +12,19 @@
 
 [ideenergy](https://github.com/ldotlopez/ideenergy) integration for [home-assistant](https://home-assistant.io/)
 
-Esta integración provee sensores para el distribuidor de energía español [i-DE](i-de.es).
+Esta integración proporciona sensores para el distribuidor de energía español [i-DE](https://i-de.es).
 
-Require de un usuario **avanzado** en la página web del distribuidor.
+Requiere un usuario **avanzado** en la página web del distribuidor.
 
-**⚠️ Asegurese de leer la [FAQ](https://github.com/ldotlopez/ha-ideenergy/blob/main/FAQ.md)' y las secciones 'advertencias' y 'dependencias'.**
+**⚠️ Asegúrese de leer la [FAQ](https://github.com/ldotlopez/ha-ideenergy/blob/main/FAQ.md) y las secciones 'Advertencias' y 'Dependencias'.**
 
 ## Características
 
-* Integración con el panel del energía de Home Assistant
+* Integración con el panel de energía de Home Assistant.
 
 * Datos de consumo diario por franjas horarias (24 lecturas del día anterior).
 
-* Sensores históricos (consumulo y generación solar) con mayor precisión (sub-kWh). Estos datos no son tiempo real y normalmente llevan un retraso de entre 24 y 48 horas.
+* Sensores históricos (consumo y generación solar) con mayor precisión (sub-kWh). Estos datos no son en tiempo real y normalmente llevan un retraso de entre 24 y 48 horas.
 
 * Nuevas entidades en el dispositivo:
   * Consumo total de ayer.
@@ -34,7 +34,7 @@ Require de un usuario **avanzado** en la página web del distribuidor.
 
 * Soporte para varios contratos (puntos de servicio).
 
-* Configuración a través del [interfaz web de Home Assistant](https://developers.home-assistant.io/docs/config_entries_options_flow_handler) sin necesidad de editar ficheros YAML.
+* Configuración a través de la [interfaz web de Home Assistant](https://developers.home-assistant.io/docs/config_entries_options_flow_handler), sin necesidad de editar ficheros YAML.
 
 * La obtención de datos del API de i-DE se realiza solo al arrancar la integración y una vez al día a las 12:30, cuando normalmente ya están disponibles los datos del día anterior.
 
@@ -47,10 +47,10 @@ Esta adaptación deja de obtener el consumo instantáneo del contador. Para una 
 Ahora la integración obtiene el consumo del día anterior por franja horaria (24 lecturas). Esta información suele estar disponible a partir de las 10:00 del día siguiente, por eso la lectura se programa a las 12:30 para tener margen.
 
 
-## Dependencies
+## Dependencias
 
 Es necesario disponer de acceso al área de clientes de i-DE.
-Puedes registrarte en el siguiente link: [Área Clientes | I-DE - Grupo Iberdrola](https://www.i-de.es/consumidores/web/guest/login).
+Puedes registrarte en el siguiente enlace: [Área Clientes | I-DE - Grupo Iberdrola](https://www.i-de.es/consumidores/web/guest/login).
 
 Además es necesario disponer del perfil de "Usuario avanzado". Si no se dispone de él hay que rellenar un formulario del [Perfil de cliente](https://www.i-de.es/consumidores/web/home/personal-area/userData).
 
@@ -75,7 +75,7 @@ Además es necesario disponer del perfil de "Usuario avanzado". Si no se dispone
   - (Opción B) Navega a "Ajustes" → "Dispositivos y servicios" y pulsa "Añadir integración". Elige "i-DE.es sensores de energía".  
     ![image](https://user-images.githubusercontent.com/59612788/171966005-e58f6b88-a952-4033-82c6-b1d4ea665873.png)
 
-5. Sigue los pasos del asistente: Proporciona tus credenciales de acceso para el área de cliente de "i-DE", después elige el contrato qu deseas monitorizar. Si necesitas añadir más contratos repite los pasos anteriores para cada uno de ellos.
+5. Sigue los pasos del asistente: proporciona tus credenciales de acceso para el área de cliente de i-DE y, después, elige el contrato que deseas monitorizar. Si necesitas añadir más contratos, repite los pasos anteriores para cada uno de ellos.
 
 ## Instalación
 
@@ -93,7 +93,7 @@ A través de custom_components o [HACS](https://hacs.xyz/)
   - (Opción B) Navega a "Ajustes" → "Dispositivos y servicios" y pulsa "Añadir integración". Elige "i-DE.es sensores de energía".  
     ![image](https://user-images.githubusercontent.com/59612788/171966005-e58f6b88-a952-4033-82c6-b1d4ea665873.png)
 
-5. Sigue los pasos del asistente: Proporciona tus credenciales de acceso para el área de cliente de "i-DE", después elige el contrato qu deseas monitorizar. Si necesitas añadir más contratos repite los pasos anteriores para cada uno de ellos.
+5. Sigue los pasos del asistente: proporciona tus credenciales de acceso para el área de cliente de i-DE y, después, elige el contrato que deseas monitorizar. Si necesitas añadir más contratos, repite los pasos anteriores para cada uno de ellos.
 
 ## Capturas
 
@@ -115,4 +115,4 @@ A través de custom_components o [HACS](https://hacs.xyz/)
 ## Advertencias
 Esta integración provee un sensor 'histórico' que incorpora datos del pasado en la base de datos de Home Assistant. Por su propia seguridad este sensor no está habilitado y debe activarse manualmente.
 
-☠️ El sensor histórico está basado en un **hack extremadamente experimental** y puede romper y/o corromper su base de datos y/o estadísticas. **Use lo bajo su propio riesgo**.
+☠️ El sensor histórico está basado en un **hack extremadamente experimental** y puede romper y/o corromper su base de datos y/o estadísticas. **Úselo bajo su propio riesgo**.
