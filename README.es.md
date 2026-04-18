@@ -22,17 +22,29 @@ Require de un usuario **avanzado** en la página web del distribuidor.
 
 * Integración con el panel del energía de Home Assistant
 
-* Sensores de consumo instantaneo y acumulado.
+* Datos de consumo diario por franjas horarias (24 lecturas del día anterior).
 
 * Sensores históricos (consumulo y generación solar) con mayor precisión (sub-kWh). Estos datos no son tiempo real y normalmente llevan un retraso de entre 24 y 48 horas.
+
+* Nuevas entidades en el dispositivo:
+  * Consumo total de ayer.
+  * Fecha de última recarga del consumo.
+
+* Se envía una notificación a Home Assistant con el resultado de la llamada al API de i-DE.
 
 * Soporte para varios contratos (puntos de servicio).
 
 * Configuración a través del [interfaz web de Home Assistant](https://developers.home-assistant.io/docs/config_entries_options_flow_handler) sin necesidad de editar ficheros YAML.
 
-* Algoritmo de actualización para leer el contador cerca del final de cada periodo horario (entre el minuto 50 y 59) y una mejor representación del consumo en el panel de energía de Home Assistant
+* La obtención de datos del API de i-DE se realiza solo al arrancar la integración y una vez al día a las 12:30, cuando normalmente ya están disponibles los datos del día anterior.
 
 * Totalmente [asíncrono](https://developers.home-assistant.io/docs/asyncio_index) e integrado en Home Assistant.
+
+## Notas de la adaptación
+
+Esta adaptación deja de obtener el consumo instantáneo del contador. Para una lectura en tiempo real era necesario realizar varias llamadas, esperar a que la lectura estuviera disponible y mantener una sesión con comportamiento frágil durante 24 horas.
+
+Ahora la integración obtiene el consumo del día anterior por franja horaria (24 lecturas). Esta información suele estar disponible a partir de las 10:00 del día siguiente, por eso la lectura se programa a las 12:30 para tener margen.
 
 
 ## Dependencies

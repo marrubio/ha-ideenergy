@@ -6,6 +6,7 @@ dependencies = [
 ]
 authors = [
   {name = "Luis López", email = "luis@cuarentaydos.com"},
+  {name = "Mario Rubio", email = "marugi@gmail.com"},
 ]
 readme = "README.md"
 description ="Historical sensors for HomeAssistant"

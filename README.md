@@ -23,18 +23,29 @@ This integration requires an **advanced** user profile on i-DE website.
 
 * Integration with the Home Assistant Energy Panel.
 
-* Accumulated and Instant consumption sensors.
+* Daily consumption data by hourly slots (24 readings from the previous day).
 
 * Historical sensors (both consumption and solar generation) with better (sub-kWh) precision. This data is not realtime and usually has a 24-hour to 48-hour offset.
+
+* New device entities:
+  * Total consumption of yesterday.
+  * Last consumption refresh date.
+
+* A Home Assistant notification is sent with the result of the i-DE API call.
 
 * Support for multiple contracts (service points).
 
 * Configuration through [Home Assistant Interface](https://developers.home-assistant.io/docs/config_entries_options_flow_handler) without the need to edit YAML files.
 
-* Update algorithm to read the meter near the end of each hourly period (between minute 50 and 59)
-with a better representation of consumption in the Home Assistant energy panel.
+* API data retrieval is scheduled only at integration startup and once per day at 12:30, when previous-day data is expected to be available.
 
 * Fully [asynchronous](https://developers.home-assistant.io/docs/asyncio_index) and integrated with HomeAssistant.
+
+## Adaptation notes
+
+This adaptation no longer reads instant meter consumption. Real-time readings required multiple calls, waiting for data readiness, and handling fragile 24-hour session behavior.
+
+The integration now reads previous-day consumption by hourly slots (24 values). This information is usually available after 10:00 the next day, so data retrieval is executed at 12:30 to provide additional margin.
 
 
 ## Dependencies

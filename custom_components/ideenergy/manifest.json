@@ -1,23 +1,20 @@
 {
   "domain": "ideenergy",
   "name": "i-DE Energy Monitor",
-  "after_dependencies": [
-    "recorder"
-  ],
   "codeowners": [
-    "@ldotlopez"
+    "@marrubio"
   ],
   "config_flow": true,
   "dependencies": [
     "statistics"
   ],
-  "documentation": "https://github.com/ldotlopez/ha-ideenergy",
+  "documentation": "https://github.com/marrubio/ha-ideenergy",
   "integration_type": "device",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/ldotlopez/ha-ideenergy/issues",
+  "issue_tracker": "https://github.com/marrubio/ha-ideenergy/issues",
   "requirements": [
     "ideenergy>=2.0.1.dev3",
     "homeassistant-historical-sensor==3.0.0a4"
   ],
-  "version": "3.0.0a1"
+  "version": "3.0.0alpha2"
 }
