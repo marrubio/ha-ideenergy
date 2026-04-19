@@ -22,7 +22,7 @@ import os
 import ideenergy
 from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.event import async_track_time_change
@@ -95,6 +95,7 @@ async def async_setup_entry(
 
     ##
     # Schedule daily refresh at UPDATE_HOUR:UPDATE_MINUTE (local time)
+    @callback
     def _schedule_daily_refresh(now=None) -> None:  # noqa: ARG001
         LOGGER.debug(
             "Scheduled daily refresh triggered at %s:%02d (Europe/Madrid)",
