@@ -1,0 +1,9 @@
+homeassistant_historical_sensor/__init__.py,sha256=uvPwKzSAxNekyLi9ZJ5gGg9Pti5BQFEh0bwkK9wMpI8,1117
+homeassistant_historical_sensor/consts.py,sha256=fTO3qrggug3uKqd6fRIxHCO_-ZQk5oWIBGwpBcAwxDw,874
+homeassistant_historical_sensor/sensor.py,sha256=jMseOpxUBhdqrrHmJlpqT2StMIVsNO6LdF_D0a_ktZ4,7913
+homeassistant_historical_sensor/timemachine.py,sha256=m5GW8_RxRm20wH06ZM5B3VjJW2zE9OXQWu418xqRtrE,2613
+homeassistant_historical_sensor-3.0.0a3.dist-info/licenses/LICENSE,sha256=OXLcl0T2SZ8Pmy2_dmlvKuetivmyPd5m1q-Gyd-zaYY,35149
+homeassistant_historical_sensor-3.0.0a3.dist-info/METADATA,sha256=ZE-lRkgMoMMgTQ2QGbA8Hr4DBoZiE7nLI4x96ZWZKv8,11289
+homeassistant_historical_sensor-3.0.0a3.dist-info/WHEEL,sha256=_zCd3N1l69ArxyTb8rzEoP9TpbYXkqRFSNOD5OuxnTs,91
+homeassistant_historical_sensor-3.0.0a3.dist-info/top_level.txt,sha256=hCwgaWYcmO5bAn0GQS_gWr74Xt9kk7kFXoZexTKpAyk,32
+homeassistant_historical_sensor-3.0.0a3.dist-info/RECORD,,

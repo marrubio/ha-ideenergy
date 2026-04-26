@@ -1,0 +1,57 @@
+fetch_day_reading:
+  name: "Lectura manual por fecha"
+  description: >
+    Consulta i-DE para recuperar el consumo de un día concreto e incorpora los
+    datos al historial de estadísticas del recorder (backfill).  Útil para
+    recuperar días en los que la actualización automática falló o no obtuvo datos.
+  fields:
+    date:
+      name: "Fecha"
+      description: >
+        Día a consultar en formato YYYY-MM-DD.  Debe ser anterior a hoy y no
+        puede superar los 730 días de antigüedad.
+      required: true
+      example: "2026-04-15"
+      selector:
+        date:
+
+    entry_id:
+      name: "ID de entrada (opcional)"
+      description: >
+        Identificador de la config entry de la integración.  Solo necesario si
+        hay más de una instancia configurada.
+      required: false
+      example: "abc123def456"
+      selector:
+        text:
+
+    notify:
+      name: "Notificar resultado"
+      description: >
+        Si está activado (predeterminado), crea una notificación persistente en
+        Home Assistant con el resultado de la consulta.
+      required: false
+      default: true
+      selector:
+        boolean:
+
+    force:
+      name: "Forzar actualización"
+      description: >
+        Si está activado, sobreescribe los bloques horarios que ya existan en el
+        recorder para la fecha indicada y recalcula el acumulado.
+      required: false
+      default: false
+      selector:
+        boolean:
+
+    backfill_statistics:
+      name: "Actualizar estadísticas históricas"
+      description: >
+        Si está activado (predeterminado), inserta o actualiza los registros de
+        estadísticas en el recorder y recalcula el acumulado (sum) para los
+        bloques posteriores.
+      required: false
+      default: true
+      selector:
+        boolean:

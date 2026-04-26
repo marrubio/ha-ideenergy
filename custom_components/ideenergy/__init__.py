@@ -18,17 +18,29 @@
 
 import logging
 import os
+from datetime import date
 
 import ideenergy
+import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry, ConfigEntryNotReady
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant, ServiceCall, callback, dt_util
+from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.event import async_track_time_change
 from homeassistant.loader import async_get_loaded_integration
 
-from .const import CONF_CONTRACT, DOMAIN, LOCAL_TZ, UPDATE_HOUR, UPDATE_MINUTE
+from .const import (
+    CONF_CONTRACT,
+    DOMAIN,
+    LOCAL_TZ,
+    MANUAL_MAX_DAYS_BACK,
+    SERVICE_FETCH_DAY_READING,
+    UPDATE_HOUR,
+    UPDATE_MINUTE,
+)
 from .coordinator import IDeEnergyDataCoordinator
 from .data import IntegrationIDeEnergyConfigEntry, IntegrationIDeEnergyRunTimeData
 from .store import IDeEnergyConfigEntryState
@@ -80,9 +92,8 @@ async def async_setup_entry(
         config_entry_state=config_entry_state,
         update_interval=None,
     )
-    await coordinator.async_config_entry_first_refresh()
-    if not coordinator.last_update_success:
-        raise ConfigEntryNotReady
+    # Do NOT call async_config_entry_first_refresh() to avoid API calls on startup.
+    # Scheduled refresh at 12:30 and manual calls only.
 
     ##
     # Setup integration runtime data
@@ -119,6 +130,10 @@ async def async_setup_entry(
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))
 
+    ##
+    # Register manual-fetch service (only once for the whole domain)
+    _async_register_services(hass)
+
     return True
 
 
@@ -136,6 +151,81 @@ async def async_reload_entry(
 ) -> None:
     """Reload config entry."""
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Manual-fetch service
+# ──────────────────────────────────────────────────────────────────────────────
+
+_FETCH_DAY_READING_SCHEMA = vol.Schema(
+    {
+        vol.Required("date"): cv.date,
+        vol.Optional("entry_id"): cv.string,
+        vol.Optional("notify", default=True): cv.boolean,
+        vol.Optional("force", default=False): cv.boolean,
+        vol.Optional("backfill_statistics", default=True): cv.boolean,
+    }
+)
+
+
+@callback
+def _async_register_services(hass: HomeAssistant) -> None:
+    """Register domain services (idempotent — safe to call per config entry)."""
+    if hass.services.has_service(DOMAIN, SERVICE_FETCH_DAY_READING):
+        return
+
+    async def _handle_fetch_day_reading(call: ServiceCall) -> None:
+        target_date: date = call.data["date"]
+        entry_id: str | None = call.data.get("entry_id")
+        notify: bool = call.data["notify"]
+        force: bool = call.data["force"]
+        backfill_statistics: bool = call.data["backfill_statistics"]
+
+        # ── Validate date ────────────────────────────────────────────────────
+        today = dt_util.now().astimezone(LOCAL_TZ).date()
+        if target_date >= today:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="date_not_in_past",
+            )
+        if (today - target_date).days > MANUAL_MAX_DAYS_BACK:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="date_too_far_back",
+            )
+
+        # ── Resolve config entries ────────────────────────────────────────────
+        matching: list[IntegrationIDeEnergyConfigEntry] = [
+            e
+            for e in hass.config_entries.async_entries(DOMAIN)
+            if e.runtime_data is not None
+            and (entry_id is None or e.entry_id == entry_id)
+        ]
+        if not matching:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="no_active_entry",
+            )
+
+        # ── Execute ───────────────────────────────────────────────────────────
+        for entry in matching:
+            coordinator = entry.runtime_data.coordinator
+            await coordinator.async_fetch_historical_consumption_for_date(
+                target_date,
+                force=force,
+                notify=notify,
+                backfill_statistics=backfill_statistics,
+            )
+            # Notify all coordinator entities so diagnostic sensors refresh
+            coordinator.async_set_updated_data(coordinator.data)
+
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_FETCH_DAY_READING,
+        _handle_fetch_day_reading,
+        schema=_FETCH_DAY_READING_SCHEMA,
+    )
+    LOGGER.debug("Registered service %s.%s", DOMAIN, SERVICE_FETCH_DAY_READING)
 
 
 # async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry):
