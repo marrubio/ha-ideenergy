@@ -46,6 +46,44 @@ Esta adaptación deja de obtener el consumo instantáneo del contador. Para una 
 
 Ahora la integración obtiene el consumo del día anterior por franja horaria (24 lecturas). Esta información suele estar disponible a partir de las 10:00 del día siguiente, por eso la lectura se programa a las 12:30 para tener margen.
 
+## Servicio manual: fetch_day_reading
+
+Esta integración incluye un servicio manual de Home Assistant para consultar el
+consumo de una fecha concreta y, opcionalmente, hacer backfill de estadísticas.
+
+Nombre del servicio:
+
+- `ideenergy.fetch_day_reading`
+
+Cómo ejecutarlo desde la interfaz de Home Assistant:
+
+1. Ve a **Herramientas de desarrollador** -> **Servicios**.
+2. Selecciona el servicio **ideenergy.fetch_day_reading**.
+3. Usa datos como en este ejemplo:
+
+```yaml
+date: "2026-04-15"
+notify: true
+force: false
+backfill_statistics: true
+```
+
+Parámetros:
+
+- `date` (obligatorio): fecha objetivo en formato `YYYY-MM-DD`.
+- `entry_id` (opcional): id de una config entry concreta (útil con varios contratos configurados).
+- `notify` (opcional, por defecto `true`): crea una notificación persistente con el resultado.
+- `force` (opcional, por defecto `false`): sobrescribe los bloques horarios existentes para esa fecha.
+- `backfill_statistics` (opcional, por defecto `true`): inserta/actualiza estadísticas en recorder y recalcula acumulados.
+
+Reglas de validación:
+
+- La fecha debe ser pasada (no hoy/futura).
+- La fecha debe estar dentro de los últimos 730 días.
+
+Tras una ejecución correcta, se actualizan las entidades de diagnóstico de
+ejecución manual (última ejecución, fecha solicitada, resumen y estado del backfill).
+
 
 ## Dependencias
 

@@ -31,3 +31,18 @@ LOCAL_TZ = ZoneInfo("Europe/Madrid")
 # i-DE typically publishes yesterday's data mid-morning; 12:30 is a safe window.
 UPDATE_HOUR = 12
 UPDATE_MINUTE = 30
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Manual-fetch service
+# ──────────────────────────────────────────────────────────────────────────────
+SERVICE_FETCH_DAY_READING = "fetch_day_reading"
+
+# Maximum look-back window accepted by the manual service (days)
+MANUAL_MAX_DAYS_BACK = 730
+
+# Keys used to persist manual-execution state in the config-entry store
+MANUAL_LAST_SUCCESS_TIME_KEY = "manual_last_success_time"
+MANUAL_LAST_REQUESTED_DATE_KEY = "manual_last_requested_date"
+MANUAL_LAST_RESULT_SUMMARY_KEY = "manual_last_result_summary"
+MANUAL_LAST_BACKFILL_STATUS_KEY = "manual_last_backfill_status"
+MANUAL_LAST_ERROR_KEY = "manual_last_error"

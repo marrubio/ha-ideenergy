@@ -47,6 +47,44 @@ This adaptation no longer reads instant meter consumption. Real-time readings re
 
 The integration now reads previous-day consumption by hourly slots (24 values). This information is usually available after 10:00 the next day, so data retrieval is executed at 12:30 to provide additional margin.
 
+## Manual Service: fetch_day_reading
+
+This integration provides a manual Home Assistant service to fetch consumption
+for a specific date and optionally backfill historical statistics.
+
+Service name:
+
+- `ideenergy.fetch_day_reading`
+
+How to run it from Home Assistant UI:
+
+1. Go to **Developer Tools** -> **Services**.
+2. Select service **ideenergy.fetch_day_reading**.
+3. Use data similar to this example:
+
+```yaml
+date: "2026-04-15"
+notify: true
+force: false
+backfill_statistics: true
+```
+
+Parameters:
+
+- `date` (required): target day in `YYYY-MM-DD` format.
+- `entry_id` (optional): specific config entry id (useful if multiple contracts are configured).
+- `notify` (optional, default `true`): create a persistent notification with the result.
+- `force` (optional, default `false`): overwrite existing hourly blocks for that date.
+- `backfill_statistics` (optional, default `true`): insert/update recorder statistics and recalculate accumulated sums.
+
+Validation rules:
+
+- Date must be in the past (not today/future).
+- Date must be within the last 730 days.
+
+After a successful call, the diagnostic entities related to manual execution are
+updated (last manual refresh time, requested date, result summary, and backfill status).
+
 
 ## Dependencies
 

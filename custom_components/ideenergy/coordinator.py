@@ -19,17 +19,29 @@ from __future__ import annotations
 
 import enum
 from collections.abc import Callable
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from logging import getLogger
 from time import perf_counter
+from typing import TYPE_CHECKING, Any
 
 import ideenergy
 from homeassistant.core import HomeAssistant, dt_util
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant_historical_sensor import HistoricalState
 
-from .const import DOMAIN, LOCAL_TZ
+from .const import (
+    DOMAIN,
+    LOCAL_TZ,
+    MANUAL_LAST_BACKFILL_STATUS_KEY,
+    MANUAL_LAST_ERROR_KEY,
+    MANUAL_LAST_REQUESTED_DATE_KEY,
+    MANUAL_LAST_RESULT_SUMMARY_KEY,
+    MANUAL_LAST_SUCCESS_TIME_KEY,
+)
 from .store import IDeEnergyConfigEntryState
+
+if TYPE_CHECKING:
+    pass
 
 LOGGER = getLogger(__name__)
 
@@ -100,6 +112,10 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
         # at startup and we can skip immediate re-login on first coordinator refresh.
         self._last_session_refresh_monotonic: float | None = perf_counter()
 
+        # Reference to the HistoricalConsumption entity, registered after setup.
+        # Used by the manual-fetch service to obtain statistic metadata for backfill.
+        self._historical_consumption_entity: Any | None = None
+
     @property
     def yesterday_total_last_refresh(self) -> str | None:
         if self._yesterday_total_last_refresh is None:
@@ -114,6 +130,34 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
     @property
     def yesterday_total_query_date(self) -> str | None:
         return self._yesterday_total_query_date
+
+    # ── Manual-fetch tracking (backed by persistent store) ──────────────────
+
+    @property
+    def manual_last_success_time_dt(self) -> datetime | None:
+        """Return the last successful manual fetch as an aware datetime or None."""
+        ts = self._config_entry_state.data.get(MANUAL_LAST_SUCCESS_TIME_KEY)
+        if ts is None:
+            return None
+        try:
+            return dt_util.utc_from_timestamp(float(ts)).astimezone(LOCAL_TZ)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def manual_last_requested_date(self) -> str | None:
+        """Return the last manually requested date (ISO format) or None."""
+        return self._config_entry_state.data.get(MANUAL_LAST_REQUESTED_DATE_KEY)
+
+    @property
+    def manual_last_result_summary(self) -> str | None:
+        """Return a human-readable summary of the last manual fetch result."""
+        return self._config_entry_state.data.get(MANUAL_LAST_RESULT_SUMMARY_KEY)
+
+    @property
+    def manual_last_backfill_status(self) -> str | None:
+        """Return the backfill status string from the last manual fetch."""
+        return self._config_entry_state.data.get(MANUAL_LAST_BACKFILL_STATUS_KEY)
 
     @staticmethod
     def _truncate_repr(value, max_len: int = 2000) -> str:
@@ -173,14 +217,17 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
         return details
 
     async def _async_notify(self, title: str, message: str) -> None:
-        """Send a persistent notification to Home Assistant."""
+        """Send a persistent notification to Home Assistant.
+
+        Do not set a fixed notification_id so each notification is appended
+        instead of replacing the previous one.
+        """
         await self.hass.services.async_call(
             "persistent_notification",
             "create",
             {
                 "title": title,
                 "message": message,
-                "notification_id": f"{DOMAIN}_consumption_status",
             },
         )
 
@@ -618,6 +665,203 @@ class IDeEnergyDataCoordinator(DataUpdateCoordinator[IDeEnergyDataCoordinatorDat
         hist_states = [as_historical_state(pv) for pv in data.periods]
         hist_states = [hs for hs in hist_states if hs is not None]
         return hist_states
+
+    # ── Entity registration ─────────────────────────────────────────────────
+
+    def register_historical_consumption_entity(self, entity: Any) -> None:
+        """Store a reference to the HistoricalConsumption sensor entity.
+
+        Called by the entity itself in *async_added_to_hass*.  The reference is
+        used later to retrieve the correct StatisticMetaData for backfill
+        without hard-coding the statistic_id format.
+        """
+        self._historical_consumption_entity = entity
+        LOGGER.debug("HistoricalConsumption entity registered for backfill: %s", entity.entity_id)
+
+    # ── Manual-fetch service implementation ─────────────────────────────────
+
+    async def async_fetch_historical_consumption_for_date(
+        self,
+        target_date: date,
+        *,
+        force: bool = False,
+        notify: bool = True,
+        backfill_statistics: bool = True,
+    ) -> dict[str, Any]:
+        """Fetch historical consumption for *target_date* on demand.
+
+        Refreshes the i-DE session when needed, queries the API, optionally
+        writes/updates recorder statistics via :func:`backfill.async_backfill_day_statistics`,
+        saves manual-execution state to the persistent store, and optionally
+        sends a persistent HA notification.
+
+        Returns a dict with keys:
+            date, periods, total, periods_count, warnings, backfill_status
+        """
+        # Lazy import to avoid circular dependency issues at module level
+        from .backfill import async_backfill_day_statistics  # noqa: PLC0415
+
+        query_date_str = target_date.strftime("%d-%m-%Y")
+        start = datetime(
+            year=target_date.year,
+            month=target_date.month,
+            day=target_date.day,
+        )
+        end = start + timedelta(days=1)
+
+        # ── Session refresh ──────────────────────────────────────────────────
+        try:
+            now_monotonic = perf_counter()
+            should_refresh_session = (
+                self._last_session_refresh_monotonic is None
+                or now_monotonic - self._last_session_refresh_monotonic
+                >= SESSION_REFRESH_MIN_INTERVAL_SECONDS
+            )
+            if should_refresh_session or force:
+                await self._async_api_call("login", self._client.login)
+                await self._async_api_call(
+                    "get_contract_details", self._client.get_contract_details
+                )
+                self._last_session_refresh_monotonic = perf_counter()
+            else:
+                LOGGER.debug(
+                    "Manual fetch: skipping session refresh (%.1f s since last)",
+                    now_monotonic - self._last_session_refresh_monotonic,
+                )
+
+            data = await self._async_api_call(
+                "get_historical_consumption",
+                self._client.get_historical_consumption,
+                start=start,
+                end=end,
+            )
+        except Exception as exc:
+            error_msg = str(exc)
+            exec_time = dt_util.now().astimezone(LOCAL_TZ).strftime("%d/%m/%Y %H:%M")
+
+            self._config_entry_state.data[MANUAL_LAST_REQUESTED_DATE_KEY] = target_date.isoformat()
+            self._config_entry_state.data[MANUAL_LAST_ERROR_KEY] = error_msg
+            self._config_entry_state.data[MANUAL_LAST_RESULT_SUMMARY_KEY] = f"Error: {error_msg}"
+            self._config_entry_state.data[MANUAL_LAST_BACKFILL_STATUS_KEY] = "no_ejecutado"
+            await self._config_entry_state.async_save()
+
+            if notify:
+                await self._async_notify(
+                    title="i-DE: Error en lectura manual",
+                    message=(
+                        f"No se pudieron obtener los datos.\n"
+                        f"Fecha consultada: {query_date_str}\n"
+                        f"Motivo: {error_msg}\n"
+                        f"Hora del error: {exec_time}"
+                    ),
+                )
+            raise
+
+        # ── Parse response ───────────────────────────────────────────────────
+        periods = getattr(data, "periods", None) or []
+        warnings: list[str] = []
+
+        def _as_historical_state(
+            pv: ideenergy.PeriodValue,
+        ) -> HistoricalState | None:
+            dt = pv.end.replace(tzinfo=LOCAL_TZ)
+            last_reset = pv.start.replace(tzinfo=LOCAL_TZ)
+            try:
+                return HistoricalState(
+                    state=pv.value / 1000,
+                    timestamp=dt_util.as_timestamp(dt),
+                    attributes={"last_reset": last_reset},
+                )
+            except Exception:
+                LOGGER.error("Manual fetch: invalid PeriodValue %r", pv)
+                return None
+
+        hist_states = [_as_historical_state(pv) for pv in periods]
+        hist_states = [hs for hs in hist_states if hs is not None]
+
+        total_raw = getattr(data, "total", None)
+        total: float | None = float(total_raw) if total_raw is not None else None
+
+        if len(hist_states) != 24:
+            warnings.append(
+                f"Se esperaban 24 periodos, se recibieron {len(hist_states)}"
+            )
+
+        if not hist_states:
+            warnings.append("i-DE no devolvió datos para esta fecha")
+
+        exec_time = dt_util.now().astimezone(LOCAL_TZ).strftime("%d/%m/%Y %H:%M")
+
+        # ── Optional backfill ────────────────────────────────────────────────
+        backfill_status = "desactivado"
+        backfill_result: dict[str, Any] = {}
+
+        if backfill_statistics and hist_states:
+            if self._historical_consumption_entity is not None:
+                try:
+                    metadata = self._historical_consumption_entity.get_statistic_metadata()
+                    backfill_result = await async_backfill_day_statistics(
+                        self.hass, metadata, hist_states, force=force
+                    )
+                    backfill_status = (
+                        f"OK — insertados: {backfill_result['inserted']}, "
+                        f"actualizados: {backfill_result['updated']}, "
+                        f"omitidos: {backfill_result['skipped']}"
+                    )
+                    if backfill_result.get("warnings"):
+                        warnings.extend(backfill_result["warnings"])
+                except Exception as exc:
+                    backfill_status = f"Error: {exc}"
+                    warnings.append(f"Backfill fallido: {exc}")
+                    LOGGER.exception(
+                        "Manual fetch: error during backfill for %s", target_date
+                    )
+            else:
+                backfill_status = "Entidad HistoricalConsumption no disponible"
+                warnings.append(backfill_status)
+        elif backfill_statistics and not hist_states:
+            backfill_status = "omitido (sin datos)"
+
+        # ── Persist tracking state ───────────────────────────────────────────
+        self._config_entry_state.data[MANUAL_LAST_REQUESTED_DATE_KEY] = target_date.isoformat()
+        self._config_entry_state.data[MANUAL_LAST_ERROR_KEY] = None
+        self._config_entry_state.data[MANUAL_LAST_SUCCESS_TIME_KEY] = (
+            dt_util.as_timestamp(dt_util.now())
+        )
+        total_str = f"{total:.0f} Wh" if total is not None else "desconocido"
+        self._config_entry_state.data[MANUAL_LAST_RESULT_SUMMARY_KEY] = (
+            f"OK — {len(hist_states)}/24 periodos, total={total_str}"
+        )
+        self._config_entry_state.data[MANUAL_LAST_BACKFILL_STATUS_KEY] = backfill_status
+        await self._config_entry_state.async_save()
+
+        # ── Persistent notification ──────────────────────────────────────────
+        if notify:
+            warnings_text = (
+                "\nAvisos:\n" + "\n".join(f"• {w}" for w in warnings)
+                if warnings
+                else ""
+            )
+            await self._async_notify(
+                title="i-DE: Lectura manual completada",
+                message=(
+                    f"Fecha consultada: {query_date_str}\n"
+                    f"Periodos recibidos: {len(hist_states)}/24\n"
+                    f"Total del día: {total_str}\n"
+                    f"Hora de ejecución: {exec_time}\n"
+                    f"Estado del backfill: {backfill_status}"
+                    f"{warnings_text}"
+                ),
+            )
+
+        return {
+            "date": target_date,
+            "periods": hist_states,
+            "total": total,
+            "periods_count": len(hist_states),
+            "warnings": warnings,
+            "backfill_status": backfill_status,
+        }
 
     async def async_save_timestamp_at_state(
         self, key: str, timestamp: float | None = None

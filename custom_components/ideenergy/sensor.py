@@ -28,6 +28,7 @@ from math import ceil
 from typing import cast
 
 from homeassistant.components.recorder.models import StatisticData, StatisticMetaData
+from homeassistant.components.recorder.statistics import async_add_external_statistics
 from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorEntity,
@@ -96,10 +97,14 @@ class IDeEnergySensor(CoordinatorEntity, HistoricalSensor, SensorEntity):
         for x in self.I_DE_DATA_SET:
             self.coordinator.activate_dataset(x)
 
-        # await self.async_update_historical()
-        await self.coordinator.async_request_refresh()
-        # await self.async_write_historical()
-        LOGGER.info(f"{self.entity_id} updated historical")
+        # Register this entity with the coordinator so the manual-fetch
+        # service can retrieve StatisticMetaData for backfill.
+        if hasattr(self, "get_statistic_metadata"):
+            self.coordinator.register_historical_consumption_entity(self)
+
+        # Do NOT refresh on startup to avoid API calls during initialization.
+        # Only scheduled (12:30) and manual (service) calls will fetch data.
+        LOGGER.info(f"{self.entity_id} registered (no startup refresh)")
 
     async def async_will_remove_from_hass(self) -> None:
         for x in self.I_DE_DATA_SET:
@@ -230,7 +235,35 @@ class HistoricalConsumption(IDeEnergySensor):
         meta = super().get_statistic_metadata()
         meta["unit_class"] = SensorDeviceClass.ENERGY
         meta["unit_of_measurement"] = UnitOfEnergy.KILO_WATT_HOUR
+        # External statistics format (colon separator) so they appear in
+        # the Energy dashboard selector.  source must match the domain prefix.
+        if self.entity_id:
+            meta["statistic_id"] = self.entity_id.replace(".", ":", 1)
+        meta["source"] = "sensor"
         return meta
+
+    async def async_write_historical(self) -> None:
+        """Write via async_add_external_statistics for Energy dashboard."""
+        if not self.historical_states:
+            LOGGER.warning(f"{self.entity_id}: no historical states to write")
+            return
+
+        hist_states = sorted(self.historical_states, key=lambda x: x.timestamp)
+        metadata = self.get_statistic_metadata()
+        latest = await hass_get_last_statistic(self.hass, metadata)
+
+        if latest is not None:
+            cutoff = latest["start"] + 3600
+            hist_states = [x for x in hist_states if x.timestamp > cutoff]
+
+        if not hist_states:
+            return
+
+        stats = await self.async_calculate_statistic_data(
+            hist_states, latest=latest
+        )
+        if stats:
+            async_add_external_statistics(self.hass, metadata, stats)
 
     @property
     def historical_states(self) -> list[HistoricalState] | None:
@@ -246,7 +279,33 @@ class HistoricalGeneration(IDeEnergySensor):
         meta = super().get_statistic_metadata()
         meta["unit_class"] = SensorDeviceClass.ENERGY
         meta["unit_of_measurement"] = UnitOfEnergy.KILO_WATT_HOUR
+        if self.entity_id:
+            meta["statistic_id"] = self.entity_id.replace(".", ":", 1)
+        meta["source"] = "sensor"
         return meta
+
+    async def async_write_historical(self) -> None:
+        """Write via async_add_external_statistics for Energy dashboard."""
+        if not self.historical_states:
+            LOGGER.warning(f"{self.entity_id}: no historical states to write")
+            return
+
+        hist_states = sorted(self.historical_states, key=lambda x: x.timestamp)
+        metadata = self.get_statistic_metadata()
+        latest = await hass_get_last_statistic(self.hass, metadata)
+
+        if latest is not None:
+            cutoff = latest["start"] + 3600
+            hist_states = [x for x in hist_states if x.timestamp > cutoff]
+
+        if not hist_states:
+            return
+
+        stats = await self.async_calculate_statistic_data(
+            hist_states, latest=latest
+        )
+        if stats:
+            async_add_external_statistics(self.hass, metadata, stats)
 
     @property
     def historical_states(self) -> list[HistoricalState] | None:
@@ -382,6 +441,87 @@ class LastRefreshTime(CoordinatorEntity, SensorEntity):
         return self.coordinator.yesterday_total_last_refresh_dt
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Manual-fetch diagnostic sensors
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ManualLastRefreshTime(CoordinatorEntity, SensorEntity):
+    """Timestamp of the last successful manual fetch."""
+
+    coordinator: IDeEnergyDataCoordinator
+
+    def __init__(self, *, hass: HomeAssistant, coordinator, device_info: DeviceInfo, **kwargs):
+        super().__init__(coordinator, **kwargs)
+        self._attr_has_entity_name = True
+        self._attr_name = "Manual Last Refresh Time"
+        self._attr_device_info = device_info
+        self._attr_unique_id = _build_entity_unique_id(device_info, "Manual Last Refresh Time")
+        self._attr_device_class = SensorDeviceClass.TIMESTAMP
+        self._attr_icon = "mdi:clock-edit-outline"
+        self._attr_entity_registry_enabled_default = True
+
+    @property
+    def native_value(self) -> datetime | None:
+        return self.coordinator.manual_last_success_time_dt
+
+
+class ManualLastRequestedDate(CoordinatorEntity, SensorEntity):
+    """Last date requested via the manual-fetch service (YYYY-MM-DD text)."""
+
+    coordinator: IDeEnergyDataCoordinator
+
+    def __init__(self, *, hass: HomeAssistant, coordinator, device_info: DeviceInfo, **kwargs):
+        super().__init__(coordinator, **kwargs)
+        self._attr_has_entity_name = True
+        self._attr_name = "Manual Last Requested Date"
+        self._attr_device_info = device_info
+        self._attr_unique_id = _build_entity_unique_id(device_info, "Manual Last Requested Date")
+        self._attr_icon = "mdi:calendar-search"
+        self._attr_entity_registry_enabled_default = True
+
+    @property
+    def native_value(self) -> str | None:
+        return self.coordinator.manual_last_requested_date
+
+
+class ManualLastResult(CoordinatorEntity, SensorEntity):
+    """Human-readable summary of the last manual fetch result."""
+
+    coordinator: IDeEnergyDataCoordinator
+
+    def __init__(self, *, hass: HomeAssistant, coordinator, device_info: DeviceInfo, **kwargs):
+        super().__init__(coordinator, **kwargs)
+        self._attr_has_entity_name = True
+        self._attr_name = "Manual Last Result"
+        self._attr_device_info = device_info
+        self._attr_unique_id = _build_entity_unique_id(device_info, "Manual Last Result")
+        self._attr_icon = "mdi:text-box-check-outline"
+        self._attr_entity_registry_enabled_default = True
+
+    @property
+    def native_value(self) -> str | None:
+        return self.coordinator.manual_last_result_summary
+
+
+class ManualLastBackfillStatus(CoordinatorEntity, SensorEntity):
+    """Status of the backfill step from the last manual fetch."""
+
+    coordinator: IDeEnergyDataCoordinator
+
+    def __init__(self, *, hass: HomeAssistant, coordinator, device_info: DeviceInfo, **kwargs):
+        super().__init__(coordinator, **kwargs)
+        self._attr_has_entity_name = True
+        self._attr_name = "Manual Last Backfill Status"
+        self._attr_device_info = device_info
+        self._attr_unique_id = _build_entity_unique_id(device_info, "Manual Last Backfill Status")
+        self._attr_icon = "mdi:database-refresh-outline"
+        self._attr_entity_registry_enabled_default = True
+
+    @property
+    def native_value(self) -> str | None:
+        return self.coordinator.manual_last_backfill_status
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: IntegrationIDeEnergyConfigEntry,
@@ -421,6 +561,24 @@ async def async_setup_entry(
                 # entity_description=entity_description,
             )
             for IDeClass in IDeClasses
+        ]
+    )
+
+    # Manual-fetch diagnostic sensors use keyword-only init
+    manual_diagnostic_classes = [
+        ManualLastRefreshTime,
+        ManualLastRequestedDate,
+        ManualLastResult,
+        ManualLastBackfillStatus,
+    ]
+    async_add_entities(
+        [
+            cls(
+                hass=hass,
+                coordinator=entry.runtime_data.coordinator,
+                device_info=entry.runtime_data.device_info,
+            )
+            for cls in manual_diagnostic_classes
         ]
     )
 
